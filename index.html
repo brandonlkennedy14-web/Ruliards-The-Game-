@@ -54,7 +54,7 @@
         const BOUNDARY_RADIUS = 0.85; 
         const MATCH_DURATION = 60; 
 
-        // --- Hardware Buffer Setup ---
+        // --- Hardware Buffer Setup (Dynamic Aspect Ratio) ---
         const canvas = document.getElementById('sim-canvas');
         const ctx = canvas.getContext('2d');
         const offCanvas = document.createElement('canvas');
@@ -83,7 +83,7 @@
         window.addEventListener('resize', resize);
         resize();
 
-        // --- State ---
+        // --- Multi-Dimensional State ---
         let gameState = 'BOOT'; 
         let geoMode = 2; // Default: MORPH
         let gameRule = 0; // Default: SINK
@@ -92,12 +92,14 @@
         let globalTime = 0;
         let matchStartTime = 0;
         let timeRemaining = MATCH_DURATION;
+        
         let p1Score = 0;
         let p2Score = 0;
 
-        let p1Wave = { amp: 0, phase: 0, freq: 0.03 };
-        let p2Wave = { amp: 0, phase: 0, freq: 0.05 };
-        let bassLevel = 0, trebleLevel = 0;
+        let p1Wave = { amp: 0, phase: 0, freq: 0.03 }; // Bass
+        let p2Wave = { amp: 0, phase: 0, freq: 0.05 }; // Treble
+        let bassLevel = 0;
+        let trebleLevel = 0;
 
         function makeColor(r, g, b) {
             return 0xFF000000 | (Math.floor(b) << 16) | (Math.floor(g) << 8) | Math.floor(r);
@@ -109,12 +111,14 @@
                 { x: -0.2, y: 0.2, vx: 0, vy: 0, hist: [] },
                 { x: 0.2, y: -0.2, vx: 0, vy: 0, hist: [] }
             ];
-            p1Score = 0, p2Score = 0, timeRemaining = MATCH_DURATION;
+            p1Score = 0;
+            p2Score = 0;
+            timeRemaining = MATCH_DURATION;
             matchStartTime = Date.now();
             gameState = 'PLAYING';
         }
 
-        // --- Audio ---
+        // --- Audio Context Engine ---
         let audioCtx, analyser, dataArray;
         async function initAudio() {
             try {
@@ -139,16 +143,17 @@
         canvas.addEventListener('pointerdown', (e) => {
             if (gameState === 'BOOT') return;
             if (gameState === 'GAMEOVER') { resetMatch(); return; }
+
             const rect = canvas.getBoundingClientRect();
             const gx = Math.floor((e.clientX - rect.left) * (GRID_W / Math.max(1, rect.width)));
             const gy = Math.floor((e.clientY - rect.top) * (GRID_H / Math.max(1, rect.height)));
 
             // Lifted hitboxes to prevent browser UI blocking
-            if (gy > GRID_H - 30) {
+            if (gy > GRID_H - 35) {
                 if (gx < GRID_W / 2) {
                     geoMode = (geoMode + 1) % 3;
                 } else {
-                    if (gy < GRID_H - 15) gameRule = (gameRule + 1) % 2;
+                    if (gy < GRID_H - 18) gameRule = (gameRule + 1) % 2;
                     else visMode = (visMode + 1) % 2;
                 }
             }
@@ -157,14 +162,26 @@
         // --- Physics ---
         function getHyperbolicDistance(x, y) { return Math.sqrt(x*x + y*y); }
 
-        function handlePocketEvent(index) {
-            if (gameRule === 0) index === 0 ? p1Score++ : p2Score++;
-            else index === 0 ? p2Score++ : p1Score++;
+        function checkHole(nx, ny, rad) {
+            if (geoMode === 0) { // HYPER
+                return (getHyperbolicDistance(nx, ny) > rad - 0.15 && Math.abs(nx) > 0.5 && Math.abs(ny) > 0.5);
+            } else if (geoMode === 1) { // RECT
+                return (Math.abs(nx) > rad - 0.15 && Math.abs(ny) > rad - 0.15);
+            } else { // MORPH
+                const theta = Math.atan2(ny, nx);
+                return (getHyperbolicDistance(nx, ny) > rad - 0.15 && Math.abs(Math.sin(2 * theta + globalTime * 0.03)) > 0.9);
+            }
+        }
+
+        function handlePocketEvent(coltIndex) {
+            if (gameRule === 0) coltIndex === 0 ? p1Score++ : p2Score++;
+            else coltIndex === 0 ? p2Score++ : p1Score++;
             
-            // TELEPORT: Move to opposite side and nudge slightly inward to prevent re-collision
-            colts[index].x = -colts[index].x * 0.9;
-            colts[index].y = -colts[index].y * 0.9;
-            colts[index].hist = [];
+            // TELEPORTATION: Exit opposite hole with same speed
+            colts[coltIndex].x = -colts[coltIndex].x * 0.95;
+            colts[coltIndex].y = -colts[coltIndex].y * 0.95;
+            // Velocity remains the same to keep trajectory speed
+            colts[coltIndex].hist = [];
         }
 
         function updatePhysics() {
@@ -184,42 +201,58 @@
 
             colts.forEach((c, index) => {
                 const wave = index === 0 ? p1Wave : p2Wave;
-                // HEAVY PHYSICS: Divided by 800 for high precision
+                
+                // HEAVY CINEMATIC PHYSICS
                 const fx = (wave.amp / 800) * Math.cos(wave.freq * globalTime + wave.phase);
                 const fy = (wave.amp / 800) * Math.sin(wave.freq * globalTime + wave.phase * 1.1); 
-                c.vx = (c.vx + fx) * 0.98; c.vy = (c.vy + fy) * 0.98;
-                let nx = c.x + c.vx, ny = c.y + c.vy;
-                const dist = getHyperbolicDistance(nx, ny);
+                
+                c.vx = (c.vx + fx) * 0.98; 
+                c.vy = (c.vy + fy) * 0.98;
 
-                if (geoMode === 0) { // HYPER
+                let nx = c.x + c.vx;
+                let ny = c.y + c.vy;
+                const dist = getHyperbolicDistance(nx, ny);
+                let curR = BOUNDARY_RADIUS;
+                if(geoMode === 2) curR += Math.sin(globalTime * 0.05) * 0.05 + bassLevel * 0.1;
+
+                // --- Hole Suction / Pull ---
+                if (checkHole(nx, ny, curR)) {
+                    // Small "pull" towards the abyss
+                    c.vx += (Math.sign(nx) * curR - nx) * 0.01;
+                    c.vy += (Math.sign(ny) * curR - ny) * 0.01;
+                    
+                    // Event threshold
+                    if (dist > curR - 0.02) {
+                        handlePocketEvent(index);
+                        return;
+                    }
+                }
+
+                // Standard Boundary Collisions
+                if (geoMode === 0) {
                     if (dist > BOUNDARY_RADIUS) {
-                        if (Math.abs(nx) > 0.50 && Math.abs(ny) > 0.50) { handlePocketEvent(index); return; }
                         const nX = nx/dist, nY = ny/dist, dot = c.vx*nX + c.vy*nY;
                         c.vx -= 2*dot*nX; c.vy -= 2*dot*nY; nx = nX*BOUNDARY_RADIUS; ny = nY*BOUNDARY_RADIUS;
                     }
-                } else if (geoMode === 1) { // RECT
-                    if (Math.abs(nx) > BOUNDARY_RADIUS || Math.abs(ny) > BOUNDARY_RADIUS) {
-                        if (Math.abs(nx) > BOUNDARY_RADIUS - 0.15 && Math.abs(ny) > BOUNDARY_RADIUS - 0.15) { handlePocketEvent(index); return; }
-                        if (Math.abs(nx) > BOUNDARY_RADIUS) { c.vx *= -1; nx = Math.sign(nx)*BOUNDARY_RADIUS; }
-                        if (Math.abs(ny) > BOUNDARY_RADIUS) { c.vy *= -1; ny = Math.sign(ny)*BOUNDARY_RADIUS; }
-                    }
-                } else if (geoMode === 2) { // MORPH
-                    const rad = BOUNDARY_RADIUS + Math.sin(globalTime * 0.05) * 0.05 + bassLevel * 0.1;
-                    if (dist > rad) {
-                        const theta = Math.atan2(ny, nx);
-                        if (Math.abs(Math.sin(2 * theta + globalTime * 0.03)) > 0.9) { handlePocketEvent(index); return; }
+                } else if (geoMode === 1) {
+                    if (Math.abs(nx) > BOUNDARY_RADIUS) { c.vx *= -1; nx = Math.sign(nx)*BOUNDARY_RADIUS; }
+                    if (Math.abs(ny) > BOUNDARY_RADIUS) { c.vy *= -1; ny = Math.sign(ny)*BOUNDARY_RADIUS; }
+                } else {
+                    if (dist > curR) {
                         const nX = nx/dist, nY = ny/dist, dot = c.vx*nX + c.vy*nY;
-                        c.vx -= 2*dot*nX; c.vy -= 2*dot*nY; nx = nX*rad; ny = nY*rad;
+                        c.vx -= 2*dot*nX; c.vy -= 2*dot*nY; nx = nX*curR; ny = nY*curR;
                     }
                 }
+
                 c.x = nx; c.y = ny;
                 c.hist.push({x: nx, y: ny});
                 if (c.hist.length > 25) c.hist.shift();
             });
+
             globalTime++;
         }
 
-        // --- Font ---
+        // --- Pixel Font ---
         const font = {
             'A':[0,1,0, 1,0,1, 1,1,1, 1,0,1, 1,0,1], 'B':[1,1,0, 1,0,1, 1,1,0, 1,0,1, 1,1,0],
             'C':[1,1,1, 1,0,0, 1,0,0, 1,0,0, 1,1,1], 'D':[1,1,0, 1,0,1, 1,0,1, 1,0,1, 1,1,0],
@@ -281,17 +314,17 @@
                     if (getHyperbolicDistance(nx, ny) > BOUNDARY_RADIUS+0.02) isOut = true;
                     if (getHyperbolicDistance(nx, ny) > BOUNDARY_RADIUS-0.02 && getHyperbolicDistance(nx, ny) <= BOUNDARY_RADIUS+0.02) isB = true;
                     warp = 1/(1-Math.pow(Math.min(getHyperbolicDistance(nx,ny)/BOUNDARY_RADIUS, 0.99), 2)+0.1);
-                    if (getHyperbolicDistance(nx,ny)>BOUNDARY_RADIUS-0.15 && Math.abs(nx)>0.5 && Math.abs(ny)>0.5) isP = true;
+                    isP = checkHole(nx, ny, BOUNDARY_RADIUS);
                 } else if (geoMode === 1) {
                     if (Math.abs(nx)>BOUNDARY_RADIUS+0.02 || Math.abs(ny)>BOUNDARY_RADIUS+0.02) isOut = true;
                     if ((Math.abs(nx)>BOUNDARY_RADIUS-0.02 && Math.abs(nx)<=BOUNDARY_RADIUS+0.02 && Math.abs(ny)<=BOUNDARY_RADIUS+0.02) || (Math.abs(ny)>BOUNDARY_RADIUS-0.02 && Math.abs(ny)<=BOUNDARY_RADIUS+0.02 && Math.abs(nx)<=BOUNDARY_RADIUS+0.02)) isB = true;
-                    warp = 1; if (Math.abs(nx)>BOUNDARY_RADIUS-0.15 && Math.abs(ny)>BOUNDARY_RADIUS-0.15 && Math.abs(nx)<=BOUNDARY_RADIUS && Math.abs(ny)<=BOUNDARY_RADIUS) isP = true;
+                    warp = 1; isP = checkHole(nx, ny, BOUNDARY_RADIUS);
                 } else if (geoMode === 2) {
                     curR = BOUNDARY_RADIUS + Math.sin(t)*0.05 + bassLevel*0.1;
                     if (getHyperbolicDistance(nx, ny) > curR+0.02) isOut = true;
                     if (getHyperbolicDistance(nx, ny) > curR-0.02 && getHyperbolicDistance(nx, ny) <= curR+0.02) isB = true;
                     warp = 1/(1-Math.pow(Math.min(getHyperbolicDistance(nx,ny)/curR, 0.99), 2)+0.1);
-                    if (getHyperbolicDistance(nx,ny)>curR-0.15 && getHyperbolicDistance(nx,ny)<=curR && Math.abs(Math.sin(2*Math.atan2(ny,nx)+globalTime*0.03))>0.9) isP = true;
+                    isP = checkHole(nx, ny, curR);
                 }
 
                 let bgP = makeColor(30, 0, 20);
@@ -299,9 +332,9 @@
                     const foam = Math.sin(getHyperbolicDistance(nx,ny)*15-t)*Math.cos(Math.atan2(ny,nx)*8+t*0.5);
                     bgP = foam>0.6?makeColor(20+bassLevel*30, 0, 40+trebleLevel*30):foam>0.2?makeColor(5, 15+bassLevel*15, 30):makeColor(2,2,5);
                 } else if (isP) {
-                    // VOID HOLE RENDERING: Deep black center with glowing edge
-                    const swirl = Math.sin(nx*15+ny*15-t*3);
-                    bgP = swirl>0.8?makeColor(120, 0, 100):makeColor(0,0,0);
+                    // VOID HOLE: Intense dark singularity with high-frequency swirl
+                    const swirl = Math.sin(nx*25+ny*25-t*5);
+                    bgP = swirl>0.7?makeColor(50, 0, 60):makeColor(0,0,0);
                 } else if (isB) { bgP = cW2; }
                 else {
                     const gX = Math.abs(Math.sin(nx*15*warp)), gY = Math.abs(Math.sin(ny*15*warp));
@@ -325,11 +358,20 @@
                 }
             }
 
+            // HUD Anchors Lifted to prevent cutoff
             drawText("P1:"+p1Score.toString().padStart(2,'0'), 8, 8, cP1); drawText("P2:"+p2Score.toString().padStart(2,'0'), Math.max(0,GRID_W-28), 8, cP2);
             drawText("T:"+timeRemaining.toString().padStart(2,'0'), Math.floor(GRID_W/2)-8, 8, (timeRemaining<=10?cA:cH));
-            if (visMode === 1) { const bT = "BUYMEACOFFEE.COM/SUPPORT"; drawText(bT, Math.floor((GRID_W-bT.length*4)/2), 18, cH); }
-            drawText("ONLINE:24MS", 8, Math.max(0,GRID_H-14), cO); drawText("GEO:"+(geoMode===0?"HYPER":geoMode===1?"RECT":"MORPH"), 8, Math.max(0,GRID_H-22), cH);
-            drawText("MODE:"+(gameRule===0?"SINK":"SURV"), Math.max(0,GRID_W-46), Math.max(0,GRID_H-22), cH); drawText("VIS:"+(visMode===0?"NORM":"ILLUS"), Math.max(0,GRID_W-42), Math.max(0,GRID_H-14), cH);
+            
+            if (visMode === 1) { 
+                const bT = "BUYMEACOFFEE.COM/BRANDONKENNEDY"; 
+                drawText(bT, Math.floor((GRID_W-bT.length*4)/2), 18, cH); 
+            }
+
+            drawText("ONLINE:24MS", 8, Math.max(0,GRID_H-16), cO); 
+            drawText("GEO:"+(geoMode===0?"HYPER":geoMode===1?"RECT":"MORPH"), 8, Math.max(0,GRID_H-24), cH);
+            drawText("MODE:"+(gameRule===0?"SINK":"SURV"), Math.max(0,GRID_W-46), Math.max(0,GRID_H-24), cH); 
+            drawText("VIS:"+(visMode===0?"NORM":"ILLUS"), Math.max(0,GRID_W-42), Math.max(0,GRID_H-16), cH);
+
             if (gameState === 'GAMEOVER') {
                 for(let i=0; i<buf.length; i++) buf[i] = (buf[i]&0x44FFFFFF);
                 const wT = p1Score>p2Score?"P1 WINS!":p2Score>p1Score?"P2 WINS!":"DRAW!", wC = p1Score>p2Score?cP1:p2Score>p1Score?cP2:cH;
