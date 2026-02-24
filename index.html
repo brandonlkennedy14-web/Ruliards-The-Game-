@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sim3Colts // Holographic Hyperbolic</title>
+    <style>
+        body {
+            background-color: #000;
+            margin: 0;
+            overflow: hidden;
+            user-select: none;
+            touch-action: none;
+        }
+        /* The chunky, pure pixel aesthetic */
+        canvas {
+            image-rendering: pixelated;
+            width: 100vw;
+            height: 100vh;
+            object-fit: cover;
+        }
+        /* Minimalist boot overlay (required for audio context) */
+        #boot-seq {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: rgba(0,0,0,0.9);
+            color: #00ffcc;
+            font-family: monospace;
+            cursor: pointer;
+            z-index: 50;
+            transition: opacity 1s;
+        }
+        .pulse { animation: p 1.5s infinite; }
+        @keyframes p { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+    </style>
+</head>
+<body>
+
+    <div id="boot-seq">
+        <h1 style="font-size: 2rem; letter-spacing: 0.5em; text-shadow: 0 0 10px #00ffcc;">SIM3COLTS</h1>
+        <p class="pulse">INITIALIZE HOLOGRAPHIC RULIAD GRID</p>
+        <p style="font-size: 0.7rem; color: #ff00aa; margin-top: 20px;">[ CLICK TO ENGAGE AUDIO SENSORS ]</p>
+    </div>
+
+    <!-- Pure Computational Canvas (No HTML UI overlays allowed past this point) -->
+    <canvas id="sim-canvas"></canvas>
+
+    <script>
+        // --- Core Architectural Constants ---
+        const GRID_RES = 96; // 96x96 perfect square chunk matrix
+        const BOUNDARY_RADIUS = 0.9; // Hyperbolic disk radius
+
+        // --- Hardware Buffer Setup ---
+        const canvas = document.getElementById('sim-canvas');
+        const ctx = canvas.getContext('2d');
+        const offCanvas = document.createElement('canvas');
+        offCanvas.width = GRID_RES;
+        offCanvas.height = GRID_RES;
+        const offCtx = offCanvas.getContext('2d');
+        const imgData = offCtx.createImageData(GRID_RES, GRID_RES);
+        const buf = new Uint32Array(imgData.data.buffer); // Direct Memory ABGR Matrix
+
+        // Fit to screen while maintaining aspect ratio via CSS
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            ctx.imageSmoothingEnabled = false;
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        // --- Custom Pixel Font (3x5 bits) ---
+        // Rendered directly into the memory buffer to avoid HTML UI
+        const font = {
+            '0':[1,1,1, 1,0,1, 1,0,1, 1,0,1, 1,1,1], '1':[0,1,0, 1,1,0, 0,1,0, 0,1,0, 1,1,1],
+            '2':[1,1,1, 0,0,1, 1,1,1, 1,0,0, 1,1,1], '3':[1,1,1, 0,0,1, 1,1,1, 0,0,1, 1,1,1],
+            '4':[1,0,1, 1,0,1, 1,1,1, 0,0,1, 0,0,1], '5':[1,1,1, 1,0,0, 1,1,1, 0,0,1, 1,1,1],
+            '6':[1,1,1, 1,0,0, 1,1,1, 1,0,1, 1,1,1], '7':[1,1,1, 0,0,1, 0,0,1, 0,0,1, 0,0,1],
+            '8':[1,1,1, 1,0,1, 1,1,1, 1,0,1, 1,1,1], '9':[1,1,1, 1,0,1, 1,1,1, 0,0,1, 1,1,1],
+            'W':[1,0,1, 1,0,1, 1,0,1, 1,1,1, 1,0,1], 'I':[1,1,1, 0,1,0, 0,1,0, 0,1,0, 1,1,1],
+            'N':[1,1,1, 1,0,1, 1,0,1, 1,0,1, 1,0,1], 'D':[1,1,0, 1,0,1, 1,0,1, 1,0,1, 1,1,0],
+            'H':[1,0,1, 1,0,1, 1,1,1, 1,0,1, 1,0,1], 'T':[1,1,1, 0,1,0, 0,1,0, 0,1,0, 0,1,0],
+            'S':[1,1,1, 1,0,0, 1,1,1, 0,0,1, 1,1,1], 'P':[1,1,1, 1,0,1, 1,1,1, 1,0,0, 1,0,0],
+            'R':[1,1,1, 1,0,1, 1,1,0, 1,0,1, 1,0,1], 'O':[1,1,1, 1,0,1, 1,0,1, 1,0,1, 1,1,1],
+            'C':[1,1,1, 1,0,0, 1,0,0, 1,0,0, 1,1,1], 'L':[1,0,0, 1,0,0, 1,0,0, 1,0,0, 1,1,1],
+            ':':[0,0,0, 0,1,0, 0,0,0, 0,1,0, 0,0,0], ' ':[0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,0,0]
+        };
+
+        function drawText(text, startX, startY, colorABGR) {
+            let cx = startX;
+            for (let i = 0; i < text.length; i++) {
+                const char = text[i].toUpperCase();
+                const glyph = font[char] || font[' '];
+                for (let gy = 0; gy < 5; gy++) {
+                    for (let gx = 0; gx < 3; gx++) {
+                        if (glyph[gy * 3 + gx]) {
+                            const px = cx + gx;
+                            const py = startY + gy;
+                            if (px >= 0 && px < GRID_RES && py >= 0 && py < GRID_RES) {
+                                buf[py * GRID_RES + px] = colorABGR;
+                            }
+                        }
+                    }
+                }
+                cx += 4; // 3px width + 1px spacing
+            }
+        }
+
+        // --- Holographic Color Palettes (ABGR format) ---
+        const COLORS = {
+            VOID:    0xFF050205,
+            DEEP:    0xFF330022, // Deep purple
+            WAVE_L:  0xFF882244, // Magenta
+            WAVE_M:  0xFFdd5511, // Orange/Gold
+            WAVE_H:  0xFFeeaa00, // Cyan/Blue
+            GRID:    0xFF111111,
+            P1_BALL: 0xFFFFdd00, // Cyan
+            P2_BALL: 0xFFff00ff, // Neon Magenta
+            HUD:     0xFFaaffaa  // Mint Green
+        };
+
+        // --- Multi-Dimensional State ---
+        let isRunning = false;
+        let windingP1 = 0;
+        let windingP2 = 0;
+        
+        // Audio Waves
+        let p1Wave = { amp: 0, phase: 0, freq: 0.03 }; // Bass
+        let p2Wave = { amp: 0, phase: 0, freq: 0.05 }; // Treble
+
+        // Two-Player "Colts" (Balls)
+        let colts = [
+            { x: -0.2, y: 0.2, vx: 0, vy: 0, color: COLORS.P1_BALL, hist: [] }, // P1 (Bass)
+            { x: 0.2, y: -0.2, vx: 0, vy: 0, color: COLORS.P2_BALL, hist: [] }  // P2 (Treble)
+        ];
+        let globalTime = 0;
+
+        // --- Audio Context Engine ---
+        let audioCtx, analyser, dataArray;
+
+        async function initAudio() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                analyser = audioCtx.createAnalyser();
+                const source = audioCtx.createMediaStreamSource(stream);
+                source.connect(analyser);
+                
+                analyser.fftSize = 256;
+                dataArray = new Uint8Array(analyser.frequencyBinCount);
+                
+                document.getElementById('boot-seq').style.opacity = '0';
+                setTimeout(() => {
+                    document.getElementById('boot-seq').style.display = 'none';
+                    isRunning = true;
+                    requestAnimationFrame(renderLoop);
+                }, 1000);
+            } catch (err) {
+                alert("Audio/Mic access is required to warp the holographic grid.");
+            }
+        }
+        document.getElementById('boot-seq').addEventListener('click', initAudio);
+
+        // --- Hyperbolic Metric & Collisions ---
+        function getHyperbolicDistance(x, y) {
+            return Math.sqrt(x*x + y*y);
+        }
+
+        // --- Physics Engine ---
+        function updatePhysics() {
+            analyser.getByteFrequencyData(dataArray);
+            
+            // Bass analysis (P1)
+            let bass = 0; for(let i = 0; i < 8; i++) bass += dataArray[i];
+            bass = (bass / 8) / 255;
+            
+            // Treble analysis (P2)
+            let treble = 0; for(let i = 20; i < 50; i++) treble += dataArray[i];
+            treble = (treble / 30) / 255;
+
+            // Amplitude warps the wave field
+            p1Wave.amp = bass * 1.5;
+            p2Wave.amp = treble * 1.5;
+            p1Wave.phase += 0.02 + (bass * 0.05);
+            p2Wave.phase += 0.03 + (treble * 0.05);
+
+            // Update Colts (Lissajous Standing Wave Trajectory)
+            colts.forEach((c, index) => {
+                // P1 driven mostly by Bass, P2 driven mostly by Treble
+                const wave = index === 0 ? p1Wave : p2Wave;
+                
+                const fx = (wave.amp / 100) * Math.cos(wave.freq * globalTime + wave.phase);
+                const fy = (wave.amp / 100) * Math.sin(wave.freq * globalTime + wave.phase * 1.1); // Phase offset for orbit
+                
+                c.vx = (c.vx + fx) * 0.98; // Momentum
+                c.vy = (c.vy + fy) * 0.98;
+
+                let nx = c.x + c.vx;
+                let ny = c.y + c.vy;
+
+                // Hyperbolic Boundary Collision (Poincaré Disk)
+                const dist = getHyperbolicDistance(nx, ny);
+                if (dist > BOUNDARY_RADIUS) {
+                    // Inversion reflection at the boundary
+                    const normalX = nx / dist;
+                    const normalY = ny / dist;
+                    const dot = c.vx * normalX + c.vy * normalY;
+                    
+                    c.vx = c.vx - 2 * dot * normalX;
+                    c.vy = c.vy - 2 * dot * normalY;
+                    
+                    nx = normalX * BOUNDARY_RADIUS;
+                    ny = normalY * BOUNDARY_RADIUS;
+
+                    // Corner hit approximation in a circle (strike specific quadrants)
+                    if (Math.abs(nx) > BOUNDARY_RADIUS*0.6 && Math.abs(ny) > BOUNDARY_RADIUS*0.6) {
+                        if (index === 0) windingP1++;
+                        if (index === 1) windingP2++;
+                    }
+                }
+
+                c.x = nx;
+                c.y = ny;
+                
+                c.hist.push({x: nx, y: ny});
+                if (c.hist.length > 20) c.hist.shift();
+            });
+
+            globalTime++;
+        }
+
+        // --- Ruliad Renderer ---
+        function renderLoop() {
+            if (!isRunning) return;
+            updatePhysics();
+
+            const t = globalTime * 0.05;
+
+            for (let i = 0; i < buf.length; i++) {
+                const gx = i % GRID_RES;
+                const gy = Math.floor(i / GRID_RES);
+                
+                const nx = (gx / GRID_RES) * 2 - 1;
+                const ny = (gy / GRID_RES) * 2 - 1;
+
+                const dist = getHyperbolicDistance(nx, ny);
+
+                // Outside Hyperbolic Disk
+                if (dist > BOUNDARY_RADIUS + 0.02) {
+                    buf[i] = COLORS.VOID;
+                    continue;
+                }
+                
+                // Boundary Edge Ring
+                if (dist > BOUNDARY_RADIUS - 0.02) {
+                    buf[i] = COLORS.WAVE_H; // Bright cyan edge
+                    continue;
+                }
+
+                // Grid Lines (Warped by distance)
+                // The closer to the edge, the denser the grid (Hyperbolic illusion)
+                const warp = 1 / (1 - Math.pow(dist/BOUNDARY_RADIUS, 2) + 0.1);
+                const gridX = Math.abs(Math.sin(nx * 15 * warp));
+                const gridY = Math.abs(Math.sin(ny * 15 * warp));
+                if (gridX < 0.1 || gridY < 0.1) {
+                    buf[i] = COLORS.GRID;
+                    continue;
+                }
+
+                // Chladni Interference Hologram (Driven by audio)
+                // Standing wave changes topology/color mapping
+                const k = 12 * warp; 
+                const u1 = p1Wave.amp * Math.cos(k * nx - t + p1Wave.phase);
+                const u2 = p2Wave.amp * Math.sin(k * ny + t + p2Wave.phase);
+                const interference = Math.abs(u1 * u2 + Math.sin(dist * 20 - t));
+
+                if (interference > 0.8) buf[i] = COLORS.WAVE_H;
+                else if (interference > 0.4) buf[i] = COLORS.WAVE_M;
+                else if (interference > 0.1) buf[i] = COLORS.WAVE_L;
+                else buf[i] = COLORS.DEEP;
+
+                // Draw Colts (Balls) and Trails
+                let drawn = false;
+                for (let c = 0; c < colts.length; c++) {
+                    const colt = colts[c];
+                    // Ball
+                    if (Math.pow(nx - colt.x, 2) + Math.pow(ny - colt.y, 2) < 0.002) {
+                        buf[i] = colt.color;
+                        drawn = true;
+                        break;
+                    }
+                    // Trail
+                    for (let p of colt.hist) {
+                        if (Math.pow(nx - p.x, 2) + Math.pow(ny - p.y, 2) < 0.0005) {
+                            buf[i] = colt.color & 0x77FFFFFF; // Dimmed trail
+                            drawn = true;
+                            break;
+                        }
+                    }
+                    if(drawn) break;
+                }
+            }
+
+            // --- Render Pixel HUD over the matrix ---
+            // Top Left
+            drawText("P1:COLT", 2, 2, COLORS.P1_BALL);
+            drawText("W:" + windingP1.toString().padStart(3,'0'), 2, 8, COLORS.HUD);
+            
+            // Top Right
+            drawText("P2:COLT", GRID_RES - 29, 2, COLORS.P2_BALL);
+            drawText("W:" + windingP2.toString().padStart(3,'0'), GRID_RES - 21, 8, COLORS.HUD);
+
+            // Bottom Center
+            drawText("HOLO_METRIC", GRID_RES/2 - 21, GRID_RES - 12, COLORS.WAVE_M);
+            drawText("AUDIO_SYNC", GRID_RES/2 - 19, GRID_RES - 6, COLORS.HUD);
+
+            // Push to screen
+            offCtx.putImageData(imgData, 0, 0);
+            ctx.drawImage(offCanvas, 0, 0, canvas.width, canvas.height);
+
+            requestAnimationFrame(renderLoop);
+        }
+    </script>
+</body>
+</html>
