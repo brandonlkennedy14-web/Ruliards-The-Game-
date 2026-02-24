@@ -12,14 +12,13 @@
             user-select: none;
             touch-action: none;
         }
-        /* The chunky, pure pixel aesthetic */
+        /* Pure pixel aesthetic, no blurry anti-aliasing */
         canvas {
             image-rendering: pixelated;
             width: 100vw;
             height: 100vh;
-            object-fit: cover;
+            display: block;
         }
-        /* Minimalist boot overlay (required for audio context) */
         #boot-seq {
             position: absolute;
             inset: 0;
@@ -51,38 +50,47 @@
 
     <script>
         // --- Core Architectural Constants ---
-        const GRID_RES = 96; // 96x96 perfect square chunk matrix
-        const BOUNDARY_RADIUS = 0.9; 
-        const MATCH_DURATION = 60; // 60 Second Matches
+        const TARGET_PIXELS = 25600; // Max out the Ruliad resolution limit
+        const BOUNDARY_RADIUS = 0.85; 
+        const MATCH_DURATION = 60; 
 
-        // --- Hardware Buffer Setup ---
+        // --- Hardware Buffer Setup (Dynamic Aspect Ratio) ---
         const canvas = document.getElementById('sim-canvas');
         const ctx = canvas.getContext('2d');
         const offCanvas = document.createElement('canvas');
-        offCanvas.width = GRID_RES;
-        offCanvas.height = GRID_RES;
         const offCtx = offCanvas.getContext('2d');
-        const imgData = offCtx.createImageData(GRID_RES, GRID_RES);
-        const buf = new Uint32Array(imgData.data.buffer); // Direct Memory ABGR Matrix
+        
+        let GRID_W = 100;
+        let GRID_H = 100;
+        let imgData, buf;
 
         function resize() {
             canvas.width = window.innerWidth;
             canvas.height = window.innerHeight;
             ctx.imageSmoothingEnabled = false;
+
+            // Dynamically calculate grid to fit screen perfectly without cropping
+            const aspect = window.innerWidth / window.innerHeight;
+            GRID_H = Math.floor(Math.sqrt(TARGET_PIXELS / aspect));
+            GRID_W = Math.floor(GRID_H * aspect);
+
+            offCanvas.width = GRID_W;
+            offCanvas.height = GRID_H;
+            imgData = offCtx.createImageData(GRID_W, GRID_H);
+            buf = new Uint32Array(imgData.data.buffer);
         }
         window.addEventListener('resize', resize);
         resize();
 
         // --- Multi-Dimensional State ---
-        let gameState = 'BOOT'; // BOOT, PLAYING, GAMEOVER
-        let geoMode = 0; // 0: HYPER, 1: RECT, 2: MORPH
-        let gameRule = 0; // 0: SINK (Get points), 1: SURVIVE (Give opponent points)
+        let gameState = 'BOOT'; 
+        let geoMode = 2; // Default to MORPH (Live Topology)
+        let gameRule = 0; // Default to SINK
         
         let globalTime = 0;
         let matchStartTime = 0;
         let timeRemaining = MATCH_DURATION;
         
-        // Online Scores
         let p1Score = 0;
         let p2Score = 0;
 
@@ -97,12 +105,12 @@
             return 0xFF000000 | (Math.floor(b) << 16) | (Math.floor(g) << 8) | Math.floor(r);
         }
 
-        // --- Two-Player "Colts" (Balls) ---
+        // --- Two-Player "Colts" ---
         let colts = [];
         function resetMatch() {
             colts = [
-                { x: -0.2, y: 0.2, vx: 0, vy: 0, hist: [] }, // P1 (Bass)
-                { x: 0.2, y: -0.2, vx: 0, vy: 0, hist: [] }  // P2 (Treble)
+                { x: -0.2, y: 0.2, vx: 0, vy: 0, hist: [] },
+                { x: 0.2, y: -0.2, vx: 0, vy: 0, hist: [] }
             ];
             p1Score = 0;
             p2Score = 0;
@@ -112,7 +120,6 @@
         }
 
         function respawnColt(index) {
-            // Slight randomized push so they don't get stuck on the dead center origin
             colts[index].x = 0;
             colts[index].y = 0;
             colts[index].vx = (Math.random() - 0.5) * 0.02;
@@ -122,7 +129,6 @@
 
         // --- Audio Context Engine ---
         let audioCtx, analyser, dataArray;
-
         async function initAudio() {
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -141,49 +147,35 @@
                     requestAnimationFrame(renderLoop);
                 }, 1000);
             } catch (err) {
-                alert("Audio/Mic access is required to warp the holographic grid.");
+                alert("Audio access is required to warp the grid.");
             }
         }
         document.getElementById('boot-seq').addEventListener('click', initAudio);
 
-        // --- UI Interactions (Mapped to Pixel Grid) ---
+        // --- UI Interactions ---
         canvas.addEventListener('pointerdown', (e) => {
             if (gameState === 'BOOT') return;
-            
-            // If game is over, tap anywhere to restart
-            if (gameState === 'GAMEOVER') {
-                resetMatch();
-                return;
-            }
+            if (gameState === 'GAMEOVER') { resetMatch(); return; }
 
             const rect = canvas.getBoundingClientRect();
-            const scaleX = GRID_RES / rect.width;
-            const scaleY = GRID_RES / rect.height;
-            const gx = Math.floor((e.clientX - rect.left) * scaleX);
-            const gy = Math.floor((e.clientY - rect.top) * scaleY);
+            const gx = Math.floor((e.clientX - rect.left) * (GRID_W / rect.width));
+            const gy = Math.floor((e.clientY - rect.top) * (GRID_H / rect.height));
 
-            // Tab logic: Bottom HUD area
-            if (gy > 80) {
-                if (gx < 48) {
-                    geoMode = (geoMode + 1) % 3; // Cycle Geometry
-                } else {
-                    gameRule = (gameRule + 1) % 2; // Cycle Mode
-                }
+            // Bottom UI hitboxes
+            if (gy > GRID_H - 24) {
+                if (gx < GRID_W / 2) geoMode = (geoMode + 1) % 3;
+                else gameRule = (gameRule + 1) % 2;
             }
         });
 
-        // --- Physics & Collision Engine ---
-        function getHyperbolicDistance(x, y) {
-            return Math.sqrt(x*x + y*y);
-        }
+        // --- Physics Engine ---
+        function getHyperbolicDistance(x, y) { return Math.sqrt(x*x + y*y); }
 
         function handlePocketEvent(coltIndex) {
             if (gameRule === 0) {
-                // SINK MODE: Sinking scores YOU a point
-                coltIndex === 0 ? p1Score++ : p2Score++;
+                coltIndex === 0 ? p1Score++ : p2Score++; // SINK
             } else {
-                // SURVIVE MODE: Sinking scores OPPONENT a point
-                coltIndex === 0 ? p2Score++ : p1Score++;
+                coltIndex === 0 ? p2Score++ : p1Score++; // SURVIVE
             }
             respawnColt(coltIndex);
         }
@@ -191,17 +183,12 @@
         function updatePhysics() {
             if (gameState !== 'PLAYING') return;
 
-            // Timer Logic
             const elapsed = Math.floor((Date.now() - matchStartTime) / 1000);
             timeRemaining = Math.max(0, MATCH_DURATION - elapsed);
-            if (timeRemaining === 0) {
-                gameState = 'GAMEOVER';
-                return;
-            }
+            if (timeRemaining === 0) { gameState = 'GAMEOVER'; return; }
 
             analyser.getByteFrequencyData(dataArray);
             
-            // Audio Analysis
             let b = 0; for(let i = 0; i < 8; i++) b += dataArray[i];
             bassLevel = (b / 8) / 255;
             
@@ -216,9 +203,9 @@
             colts.forEach((c, index) => {
                 const wave = index === 0 ? p1Wave : p2Wave;
                 
-                // Standing Wave Drive
-                const fx = (wave.amp / 100) * Math.cos(wave.freq * globalTime + wave.phase);
-                const fy = (wave.amp / 100) * Math.sin(wave.freq * globalTime + wave.phase * 1.1); 
+                // PHYSICS DAMPENING: Divided by 200 instead of 100 for smoother control
+                const fx = (wave.amp / 200) * Math.cos(wave.freq * globalTime + wave.phase);
+                const fy = (wave.amp / 200) * Math.sin(wave.freq * globalTime + wave.phase * 1.1); 
                 
                 c.vx = (c.vx + fx) * 0.98; 
                 c.vy = (c.vy + fy) * 0.98;
@@ -227,53 +214,33 @@
                 let ny = c.y + c.vy;
                 const dist = getHyperbolicDistance(nx, ny);
 
-                // --- Geometry specific physics routing ---
                 if (geoMode === 0) {
-                    // HYPERBOLIC (Static Circle)
                     if (dist > BOUNDARY_RADIUS) {
-                        if (Math.abs(nx) > 0.55 && Math.abs(ny) > 0.55) {
-                            handlePocketEvent(index); return;
-                        }
-                        const normalX = nx / dist;
-                        const normalY = ny / dist;
-                        const dot = c.vx * normalX + c.vy * normalY;
-                        c.vx = c.vx - 2 * dot * normalX;
-                        c.vy = c.vy - 2 * dot * normalY;
-                        nx = normalX * BOUNDARY_RADIUS;
-                        ny = normalY * BOUNDARY_RADIUS;
+                        if (Math.abs(nx) > 0.50 && Math.abs(ny) > 0.50) { handlePocketEvent(index); return; }
+                        const nX = nx/dist, nY = ny/dist, dot = c.vx*nX + c.vy*nY;
+                        c.vx -= 2*dot*nX; c.vy -= 2*dot*nY;
+                        nx = nX*BOUNDARY_RADIUS; ny = nY*BOUNDARY_RADIUS;
                     }
                 } 
                 else if (geoMode === 1) {
-                    // RECTANGULAR (Classic Pool Table)
                     if (Math.abs(nx) > BOUNDARY_RADIUS || Math.abs(ny) > BOUNDARY_RADIUS) {
-                        if (Math.abs(nx) > BOUNDARY_RADIUS - 0.15 && Math.abs(ny) > BOUNDARY_RADIUS - 0.15) {
-                            handlePocketEvent(index); return;
-                        }
-                        if (Math.abs(nx) > BOUNDARY_RADIUS) { c.vx *= -1; nx = Math.sign(nx) * BOUNDARY_RADIUS; }
-                        if (Math.abs(ny) > BOUNDARY_RADIUS) { c.vy *= -1; ny = Math.sign(ny) * BOUNDARY_RADIUS; }
+                        if (Math.abs(nx) > BOUNDARY_RADIUS - 0.15 && Math.abs(ny) > BOUNDARY_RADIUS - 0.15) { handlePocketEvent(index); return; }
+                        if (Math.abs(nx) > BOUNDARY_RADIUS) { c.vx *= -1; nx = Math.sign(nx)*BOUNDARY_RADIUS; }
+                        if (Math.abs(ny) > BOUNDARY_RADIUS) { c.vy *= -1; ny = Math.sign(ny)*BOUNDARY_RADIUS; }
                     }
                 }
                 else if (geoMode === 2) {
-                    // MORPHING (Live Audio Topology with Orbiting Pockets)
                     const currentRadius = BOUNDARY_RADIUS + Math.sin(globalTime * 0.05) * 0.05 + bassLevel * 0.1;
                     if (dist > currentRadius) {
                         const theta = Math.atan2(ny, nx);
-                        // Rotating pockets logic
-                        if (Math.abs(Math.sin(2 * theta + globalTime * 0.03)) > 0.9) {
-                            handlePocketEvent(index); return;
-                        }
-                        const normalX = nx / dist;
-                        const normalY = ny / dist;
-                        const dot = c.vx * normalX + c.vy * normalY;
-                        c.vx = c.vx - 2 * dot * normalX;
-                        c.vy = c.vy - 2 * dot * normalY;
-                        nx = normalX * currentRadius;
-                        ny = normalY * currentRadius;
+                        if (Math.abs(Math.sin(2 * theta + globalTime * 0.03)) > 0.9) { handlePocketEvent(index); return; }
+                        const nX = nx/dist, nY = ny/dist, dot = c.vx*nX + c.vy*nY;
+                        c.vx -= 2*dot*nX; c.vy -= 2*dot*nY;
+                        nx = nX*currentRadius; ny = nY*currentRadius;
                     }
                 }
 
-                c.x = nx;
-                c.y = ny;
+                c.x = nx; c.y = ny;
                 c.hist.push({x: nx, y: ny});
                 if (c.hist.length > 25) c.hist.shift();
             });
@@ -316,10 +283,10 @@
                         if (glyph[gy * 3 + gx]) {
                             for(let sy=0; sy<scale; sy++) {
                                 for(let sx=0; sx<scale; sx++) {
-                                    const px = cx + (gx * scale) + sx;
-                                    const py = startY + (gy * scale) + sy;
-                                    if (px >= 0 && px < GRID_RES && py >= 0 && py < GRID_RES) {
-                                        buf[py * GRID_RES + px] = colorABGR;
+                                    const px = Math.floor(cx + (gx * scale) + sx);
+                                    const py = Math.floor(startY + (gy * scale) + sy);
+                                    if (px >= 0 && px < GRID_W && py >= 0 && py < GRID_H) {
+                                        buf[py * GRID_W + px] = colorABGR;
                                     }
                                 }
                             }
@@ -336,126 +303,119 @@
             updatePhysics();
 
             const t = globalTime * 0.05;
+            const minDim = Math.min(GRID_W, GRID_H);
 
-            // DYNAMIC COLOR GENERATION (Audio Reactive)
             const cWave1 = makeColor(150 + bassLevel*105, 0, 50 + bassLevel*155);
             const cWave2 = makeColor(0, 100 + trebleLevel*155, 150 + trebleLevel*105);
             const cInter = makeColor(255 - bassLevel*50, 100 + trebleLevel*155, 0);
-            const cVoid  = makeColor(10 + bassLevel*20, 5, 20 + trebleLevel*30);
-
-            // Interface Colors
-            const cP1 = 0xFFFFdd00; // Cyan
-            const cP2 = 0xFFff00ff; // Neon Magenta
+            
+            const cP1 = 0xFFFFdd00; 
+            const cP2 = 0xFFff00ff; 
             const cHUD = 0xFFaaffaa;
-            const cAlert = 0xFF0000FF; // Red
+            const cAlert = 0xFF0000FF; 
             const cOnline = (globalTime % 30 < 15) ? cHUD : makeColor(50, 150, 50);
 
             for (let i = 0; i < buf.length; i++) {
-                const gx = i % GRID_RES;
-                const gy = Math.floor(i / GRID_RES);
+                const gx = i % GRID_W;
+                const gy = Math.floor(i / GRID_W);
                 
-                const nx = (gx / GRID_RES) * 2 - 1;
-                const ny = (gy / GRID_RES) * 2 - 1;
+                // Normalizing to maintain perfect aspect ratio
+                const nx = (gx - GRID_W/2) / (minDim/2);
+                const ny = (gy - GRID_H/2) / (minDim/2);
 
                 let isBoundary = false;
                 let isPocket = false;
                 let warp = 1;
                 const dist = getHyperbolicDistance(nx, ny);
+                
+                let currentRadius = BOUNDARY_RADIUS;
 
-                // --- Geometry Rendering Logic ---
-                if (geoMode === 0) {
-                    if (dist > BOUNDARY_RADIUS + 0.02) { buf[i] = cVoid; continue; }
-                    if (dist > BOUNDARY_RADIUS - 0.02) isBoundary = true;
-                    warp = 1 / (1 - Math.pow(dist/BOUNDARY_RADIUS, 2) + 0.1);
-                    if (dist > BOUNDARY_RADIUS - 0.15 && Math.abs(nx) > 0.55 && Math.abs(ny) > 0.55) isPocket = true;
+                if (geoMode === 0) { // HYPER
+                    if (dist > BOUNDARY_RADIUS - 0.02 && dist <= BOUNDARY_RADIUS + 0.02) isBoundary = true;
+                    warp = 1 / (1 - Math.pow(Math.min(dist/BOUNDARY_RADIUS, 0.99), 2) + 0.1);
+                    if (dist > BOUNDARY_RADIUS - 0.15 && Math.abs(nx) > 0.50 && Math.abs(ny) > 0.50) isPocket = true;
                 } 
-                else if (geoMode === 1) {
-                    if (Math.abs(nx) > BOUNDARY_RADIUS + 0.02 || Math.abs(ny) > BOUNDARY_RADIUS + 0.02) { buf[i] = cVoid; continue; }
-                    if (Math.abs(nx) > BOUNDARY_RADIUS - 0.02 || Math.abs(ny) > BOUNDARY_RADIUS - 0.02) isBoundary = true;
+                else if (geoMode === 1) { // RECT
+                    if ((Math.abs(nx) > BOUNDARY_RADIUS - 0.02 && Math.abs(nx) <= BOUNDARY_RADIUS + 0.02 && Math.abs(ny) <= BOUNDARY_RADIUS + 0.02) || 
+                        (Math.abs(ny) > BOUNDARY_RADIUS - 0.02 && Math.abs(ny) <= BOUNDARY_RADIUS + 0.02 && Math.abs(nx) <= BOUNDARY_RADIUS + 0.02)) isBoundary = true;
                     warp = 1;
-                    if (Math.abs(nx) > BOUNDARY_RADIUS - 0.15 && Math.abs(ny) > BOUNDARY_RADIUS - 0.15) isPocket = true;
+                    if (Math.abs(nx) > BOUNDARY_RADIUS - 0.15 && Math.abs(ny) > BOUNDARY_RADIUS - 0.15 && Math.abs(nx) <= BOUNDARY_RADIUS && Math.abs(ny) <= BOUNDARY_RADIUS) isPocket = true;
                 }
-                else if (geoMode === 2) {
-                    const currentRadius = BOUNDARY_RADIUS + Math.sin(t * 1.0) * 0.05 + bassLevel * 0.1;
-                    if (dist > currentRadius + 0.02) { buf[i] = cVoid; continue; }
-                    if (dist > currentRadius - 0.02) isBoundary = true;
-                    warp = 1 / (1 - Math.pow(dist/currentRadius, 2) + 0.1);
-                    
+                else if (geoMode === 2) { // MORPH
+                    currentRadius = BOUNDARY_RADIUS + Math.sin(t * 1.0) * 0.05 + bassLevel * 0.1;
+                    if (dist > currentRadius - 0.02 && dist <= currentRadius + 0.02) isBoundary = true;
+                    warp = 1 / (1 - Math.pow(Math.min(dist/currentRadius, 0.99), 2) + 0.1);
                     const theta = Math.atan2(ny, nx);
-                    if (dist > currentRadius - 0.15 && Math.abs(Math.sin(2 * theta + globalTime * 0.03)) > 0.9) isPocket = true;
+                    if (dist > currentRadius - 0.15 && dist <= currentRadius && Math.abs(Math.sin(2 * theta + globalTime * 0.03)) > 0.9) isPocket = true;
                 }
 
-                // Render Pockets (Vortex Effect)
+                // BACKGROUND DECORATION (Cosmic Foam)
+                const isOutside = (geoMode === 1) ? (Math.abs(nx) > BOUNDARY_RADIUS || Math.abs(ny) > BOUNDARY_RADIUS) : (dist > currentRadius);
+                if (isOutside && !isBoundary && !isPocket) {
+                    const bgTheta = Math.atan2(ny, nx);
+                    const foam = Math.sin(dist * 15 - t) * Math.cos(bgTheta * 8 + t * 0.5);
+                    if (foam > 0.6) buf[i] = makeColor(20 + bassLevel*30, 0, 40 + trebleLevel*30);
+                    else if (foam > 0.2) buf[i] = makeColor(5, 15 + bassLevel*15, 30);
+                    else buf[i] = makeColor(2, 2, 5);
+                    continue;
+                }
+
                 if (isPocket) {
                     const swirl = Math.sin(nx * 15 + ny * 15 - t * 3);
                     buf[i] = swirl > 0.5 ? makeColor(80, 0, 80) : makeColor(0, 0, 0);
                     continue;
                 }
-
                 if (isBoundary) { buf[i] = cWave2; continue; }
 
-                // Grid Lines
                 const gridX = Math.abs(Math.sin(nx * 15 * warp));
                 const gridY = Math.abs(Math.sin(ny * 15 * warp));
                 if (gridX < 0.1 || gridY < 0.1) { buf[i] = 0xFF111111; continue; }
 
-                // Holographic Interference
+                // MAXED OUT VISUALS (Added Spiral Math)
+                const innerTheta = Math.atan2(ny, nx);
+                const spiral = Math.sin(innerTheta * 4 + dist * 10 - t * 2) * 0.5;
                 const k = 12 * warp; 
                 const u1 = p1Wave.amp * Math.cos(k * nx - t + p1Wave.phase);
                 const u2 = p2Wave.amp * Math.sin(k * ny + t + p2Wave.phase);
-                const interference = Math.abs(u1 * u2 + Math.sin((nx*nx+ny*ny) * 10 - t));
+                const interference = Math.abs(u1 * u2 + Math.sin((nx*nx+ny*ny) * 12 - t) + spiral);
 
                 if (interference > 0.8) buf[i] = cWave2;
                 else if (interference > 0.4) buf[i] = cInter;
                 else if (interference > 0.1) buf[i] = cWave1;
                 else buf[i] = makeColor(30, 0, 20);
 
-                // Colts and Trails
                 let drawn = false;
                 for (let c = 0; c < colts.length; c++) {
                     const colt = colts[c];
                     const cColor = c === 0 ? cP1 : cP2;
-                    
-                    if (Math.pow(nx - colt.x, 2) + Math.pow(ny - colt.y, 2) < 0.002) {
-                        buf[i] = cColor; drawn = true; break;
-                    }
+                    if (Math.pow(nx - colt.x, 2) + Math.pow(ny - colt.y, 2) < 0.002) { buf[i] = cColor; drawn = true; break; }
                     for (let p of colt.hist) {
-                        if (Math.pow(nx - p.x, 2) + Math.pow(ny - p.y, 2) < 0.0005) {
-                            buf[i] = cColor & 0x77FFFFFF; drawn = true; break;
-                        }
+                        if (Math.pow(nx - p.x, 2) + Math.pow(ny - p.y, 2) < 0.0005) { buf[i] = cColor & 0x77FFFFFF; drawn = true; break; }
                     }
                     if(drawn) break;
                 }
             }
 
-            // --- HUD Rendering ---
-            // Top HUD
-            drawText("P1:" + p1Score.toString().padStart(2, '0'), 2, 2, cP1);
-            drawText("P2:" + p2Score.toString().padStart(2, '0'), GRID_RES - 20, 2, cP2);
-            
+            // --- HUD Anchors (Fixed bounds for any screen size) ---
+            drawText("P1:" + p1Score.toString().padStart(2, '0'), 4, 4, cP1);
+            drawText("P2:" + p2Score.toString().padStart(2, '0'), GRID_W - 24, 4, cP2);
             const timeColor = timeRemaining <= 10 ? cAlert : cHUD;
-            drawText("T:" + timeRemaining.toString().padStart(2, '0'), GRID_RES/2 - 8, 2, timeColor);
+            drawText("T:" + timeRemaining.toString().padStart(2, '0'), GRID_W/2 - 8, 4, timeColor);
 
-            // Bottom HUD
-            drawText("ONLINE:24MS", 2, GRID_RES - 7, cOnline);
-            
+            drawText("ONLINE:24MS", 4, GRID_H - 10, cOnline);
             const geoString = geoMode === 0 ? "HYPER" : geoMode === 1 ? "RECT" : "MORPH";
-            drawText("GEO:" + geoString, 2, GRID_RES - 14, cHUD);
-
+            drawText("GEO:" + geoString, 4, GRID_H - 18, cHUD);
             const ruleString = gameRule === 0 ? "SINK" : "SURV";
-            drawText("MODE:" + ruleString, GRID_RES - 37, GRID_RES - 14, cHUD);
+            drawText("MODE:" + ruleString, GRID_W - 42, GRID_H - 18, cHUD);
 
-            // --- Win Condition Overlay ---
             if (gameState === 'GAMEOVER') {
                 for(let i=0; i<buf.length; i++) buf[i] = (buf[i] & 0x44FFFFFF);
-                
                 let winText, winColor;
                 if (p1Score > p2Score) { winText = "P1 WINS!"; winColor = cP1; } 
                 else if (p2Score > p1Score) { winText = "P2 WINS!"; winColor = cP2; } 
                 else { winText = "DRAW!"; winColor = cHUD; }
-                
-                drawText(winText, GRID_RES/2 - 15, GRID_RES/2 - 10, winColor, 1);
-                drawText("CLICK TO REMATCH", GRID_RES/2 - 31, GRID_RES/2 + 5, cHUD, 1);
+                drawText(winText, GRID_W/2 - 15, GRID_H/2 - 10, winColor, 1);
+                drawText("CLICK TO REMATCH", GRID_W/2 - 31, GRID_H/2 + 5, cHUD, 1);
             }
 
             offCtx.putImageData(imgData, 0, 0);
