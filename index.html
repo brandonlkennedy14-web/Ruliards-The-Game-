@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sim3Colts // Holographic Hyperbolic</title>
+    <title>Sim3Colts // Holographic Online Arena</title>
     <style>
         body {
             background-color: #000;
@@ -42,17 +42,18 @@
 
     <div id="boot-seq">
         <h1 style="font-size: 2rem; letter-spacing: 0.5em; text-shadow: 0 0 10px #00ffcc;">SIM3COLTS</h1>
-        <p class="pulse">INITIALIZE HOLOGRAPHIC RULIAD GRID</p>
+        <p class="pulse">CONNECTING TO ONLINE ARENA...</p>
         <p style="font-size: 0.7rem; color: #ff00aa; margin-top: 20px;">[ CLICK TO ENGAGE AUDIO SENSORS ]</p>
     </div>
 
-    <!-- Pure Computational Canvas (No HTML UI overlays allowed past this point) -->
+    <!-- Pure Computational Canvas -->
     <canvas id="sim-canvas"></canvas>
 
     <script>
         // --- Core Architectural Constants ---
         const GRID_RES = 96; // 96x96 perfect square chunk matrix
-        const BOUNDARY_RADIUS = 0.9; // Hyperbolic disk radius
+        const BOUNDARY_RADIUS = 0.9; 
+        const MATCH_DURATION = 60; // 60 Second Matches
 
         // --- Hardware Buffer Setup ---
         const canvas = document.getElementById('sim-canvas');
@@ -64,7 +65,6 @@
         const imgData = offCtx.createImageData(GRID_RES, GRID_RES);
         const buf = new Uint32Array(imgData.data.buffer); // Direct Memory ABGR Matrix
 
-        // Fit to screen while maintaining aspect ratio via CSS
         function resize() {
             canvas.width = window.innerWidth;
             canvas.height = window.innerHeight;
@@ -73,71 +73,50 @@
         window.addEventListener('resize', resize);
         resize();
 
-        // --- Custom Pixel Font (3x5 bits) ---
-        // Rendered directly into the memory buffer to avoid HTML UI
-        const font = {
-            '0':[1,1,1, 1,0,1, 1,0,1, 1,0,1, 1,1,1], '1':[0,1,0, 1,1,0, 0,1,0, 0,1,0, 1,1,1],
-            '2':[1,1,1, 0,0,1, 1,1,1, 1,0,0, 1,1,1], '3':[1,1,1, 0,0,1, 1,1,1, 0,0,1, 1,1,1],
-            '4':[1,0,1, 1,0,1, 1,1,1, 0,0,1, 0,0,1], '5':[1,1,1, 1,0,0, 1,1,1, 0,0,1, 1,1,1],
-            '6':[1,1,1, 1,0,0, 1,1,1, 1,0,1, 1,1,1], '7':[1,1,1, 0,0,1, 0,0,1, 0,0,1, 0,0,1],
-            '8':[1,1,1, 1,0,1, 1,1,1, 1,0,1, 1,1,1], '9':[1,1,1, 1,0,1, 1,1,1, 0,0,1, 1,1,1],
-            'W':[1,0,1, 1,0,1, 1,0,1, 1,1,1, 1,0,1], 'I':[1,1,1, 0,1,0, 0,1,0, 0,1,0, 1,1,1],
-            'N':[1,1,1, 1,0,1, 1,0,1, 1,0,1, 1,0,1], 'D':[1,1,0, 1,0,1, 1,0,1, 1,0,1, 1,1,0],
-            'H':[1,0,1, 1,0,1, 1,1,1, 1,0,1, 1,0,1], 'T':[1,1,1, 0,1,0, 0,1,0, 0,1,0, 0,1,0],
-            'S':[1,1,1, 1,0,0, 1,1,1, 0,0,1, 1,1,1], 'P':[1,1,1, 1,0,1, 1,1,1, 1,0,0, 1,0,0],
-            'R':[1,1,1, 1,0,1, 1,1,0, 1,0,1, 1,0,1], 'O':[1,1,1, 1,0,1, 1,0,1, 1,0,1, 1,1,1],
-            'C':[1,1,1, 1,0,0, 1,0,0, 1,0,0, 1,1,1], 'L':[1,0,0, 1,0,0, 1,0,0, 1,0,0, 1,1,1],
-            ':':[0,0,0, 0,1,0, 0,0,0, 0,1,0, 0,0,0], ' ':[0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,0,0]
-        };
-
-        function drawText(text, startX, startY, colorABGR) {
-            let cx = startX;
-            for (let i = 0; i < text.length; i++) {
-                const char = text[i].toUpperCase();
-                const glyph = font[char] || font[' '];
-                for (let gy = 0; gy < 5; gy++) {
-                    for (let gx = 0; gx < 3; gx++) {
-                        if (glyph[gy * 3 + gx]) {
-                            const px = cx + gx;
-                            const py = startY + gy;
-                            if (px >= 0 && px < GRID_RES && py >= 0 && py < GRID_RES) {
-                                buf[py * GRID_RES + px] = colorABGR;
-                            }
-                        }
-                    }
-                }
-                cx += 4; // 3px width + 1px spacing
-            }
-        }
-
-        // --- Holographic Color Palettes (ABGR format) ---
-        const COLORS = {
-            VOID:    0xFF050205,
-            DEEP:    0xFF330022, // Deep purple
-            WAVE_L:  0xFF882244, // Magenta
-            WAVE_M:  0xFFdd5511, // Orange/Gold
-            WAVE_H:  0xFFeeaa00, // Cyan/Blue
-            GRID:    0xFF111111,
-            P1_BALL: 0xFFFFdd00, // Cyan
-            P2_BALL: 0xFFff00ff, // Neon Magenta
-            HUD:     0xFFaaffaa  // Mint Green
-        };
-
         // --- Multi-Dimensional State ---
-        let isRunning = false;
-        let windingP1 = 0;
-        let windingP2 = 0;
+        let gameState = 'BOOT'; // BOOT, PLAYING, GAMEOVER
+        let isHyperbolic = true;
+        let globalTime = 0;
+        let matchStartTime = 0;
+        let timeRemaining = MATCH_DURATION;
         
-        // Audio Waves
+        // Online Scores
+        let p1Score = 0;
+        let p2Score = 0;
+
+        // Audio Waves & Dynamic Color Levels
         let p1Wave = { amp: 0, phase: 0, freq: 0.03 }; // Bass
         let p2Wave = { amp: 0, phase: 0, freq: 0.05 }; // Treble
+        let bassLevel = 0;
+        let trebleLevel = 0;
 
-        // Two-Player "Colts" (Balls)
-        let colts = [
-            { x: -0.2, y: 0.2, vx: 0, vy: 0, color: COLORS.P1_BALL, hist: [] }, // P1 (Bass)
-            { x: 0.2, y: -0.2, vx: 0, vy: 0, color: COLORS.P2_BALL, hist: [] }  // P2 (Treble)
-        ];
-        let globalTime = 0;
+        // --- Dynamic ABGR Color Engine ---
+        function makeColor(r, g, b) {
+            return 0xFF000000 | (Math.floor(b) << 16) | (Math.floor(g) << 8) | Math.floor(r);
+        }
+
+        // --- Two-Player "Colts" (Balls) ---
+        let colts = [];
+        function resetMatch() {
+            colts = [
+                { x: -0.2, y: 0.2, vx: 0, vy: 0, hist: [] }, // P1 (Bass)
+                { x: 0.2, y: -0.2, vx: 0, vy: 0, hist: [] }  // P2 (Treble)
+            ];
+            p1Score = 0;
+            p2Score = 0;
+            timeRemaining = MATCH_DURATION;
+            matchStartTime = Date.now();
+            gameState = 'PLAYING';
+        }
+
+        function respawnColt(index) {
+            // Slight randomized push so they don't get stuck on the dead center origin
+            colts[index].x = 0;
+            colts[index].y = 0;
+            colts[index].vx = (Math.random() - 0.5) * 0.02;
+            colts[index].vy = (Math.random() - 0.5) * 0.02;
+            colts[index].hist = [];
+        }
 
         // --- Audio Context Engine ---
         let audioCtx, analyser, dataArray;
@@ -156,7 +135,7 @@
                 document.getElementById('boot-seq').style.opacity = '0';
                 setTimeout(() => {
                     document.getElementById('boot-seq').style.display = 'none';
-                    isRunning = true;
+                    resetMatch();
                     requestAnimationFrame(renderLoop);
                 }, 1000);
             } catch (err) {
@@ -165,80 +144,182 @@
         }
         document.getElementById('boot-seq').addEventListener('click', initAudio);
 
-        // --- Hyperbolic Metric & Collisions ---
+        // --- UI Interactions (Mapped to Pixel Grid) ---
+        canvas.addEventListener('pointerdown', (e) => {
+            if (gameState === 'BOOT') return;
+            
+            // If game is over, tap anywhere to restart
+            if (gameState === 'GAMEOVER') {
+                resetMatch();
+                return;
+            }
+
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = GRID_RES / rect.width;
+            const scaleY = GRID_RES / rect.height;
+            const gx = Math.floor((e.clientX - rect.left) * scaleX);
+            const gy = Math.floor((e.clientY - rect.top) * scaleY);
+
+            // Tab logic: Check if click is in bottom center text area [ GEO: ... ]
+            if (gy > GRID_RES - 15 && gx > GRID_RES/2 - 25 && gx < GRID_RES/2 + 25) {
+                isHyperbolic = !isHyperbolic;
+            }
+        });
+
+        // --- Physics & Collision Engine ---
         function getHyperbolicDistance(x, y) {
             return Math.sqrt(x*x + y*y);
         }
 
-        // --- Physics Engine ---
         function updatePhysics() {
+            if (gameState !== 'PLAYING') return;
+
+            // Timer Logic
+            const elapsed = Math.floor((Date.now() - matchStartTime) / 1000);
+            timeRemaining = Math.max(0, MATCH_DURATION - elapsed);
+            if (timeRemaining === 0) {
+                gameState = 'GAMEOVER';
+                return;
+            }
+
             analyser.getByteFrequencyData(dataArray);
             
-            // Bass analysis (P1)
-            let bass = 0; for(let i = 0; i < 8; i++) bass += dataArray[i];
-            bass = (bass / 8) / 255;
+            // Audio Analysis
+            let b = 0; for(let i = 0; i < 8; i++) b += dataArray[i];
+            bassLevel = (b / 8) / 255;
             
-            // Treble analysis (P2)
-            let treble = 0; for(let i = 20; i < 50; i++) treble += dataArray[i];
-            treble = (treble / 30) / 255;
+            let t = 0; for(let i = 20; i < 50; i++) t += dataArray[i];
+            trebleLevel = (t / 30) / 255;
 
-            // Amplitude warps the wave field
-            p1Wave.amp = bass * 1.5;
-            p2Wave.amp = treble * 1.5;
-            p1Wave.phase += 0.02 + (bass * 0.05);
-            p2Wave.phase += 0.03 + (treble * 0.05);
+            p1Wave.amp = bassLevel * 2.0;
+            p2Wave.amp = trebleLevel * 2.0;
+            p1Wave.phase += 0.02 + (bassLevel * 0.05);
+            p2Wave.phase += 0.03 + (trebleLevel * 0.05);
 
-            // Update Colts (Lissajous Standing Wave Trajectory)
             colts.forEach((c, index) => {
-                // P1 driven mostly by Bass, P2 driven mostly by Treble
                 const wave = index === 0 ? p1Wave : p2Wave;
                 
+                // Standing Wave Drive
                 const fx = (wave.amp / 100) * Math.cos(wave.freq * globalTime + wave.phase);
-                const fy = (wave.amp / 100) * Math.sin(wave.freq * globalTime + wave.phase * 1.1); // Phase offset for orbit
+                const fy = (wave.amp / 100) * Math.sin(wave.freq * globalTime + wave.phase * 1.1); 
                 
-                c.vx = (c.vx + fx) * 0.98; // Momentum
+                c.vx = (c.vx + fx) * 0.98; 
                 c.vy = (c.vy + fy) * 0.98;
 
                 let nx = c.x + c.vx;
                 let ny = c.y + c.vy;
 
-                // Hyperbolic Boundary Collision (Poincaré Disk)
-                const dist = getHyperbolicDistance(nx, ny);
-                if (dist > BOUNDARY_RADIUS) {
-                    // Inversion reflection at the boundary
-                    const normalX = nx / dist;
-                    const normalY = ny / dist;
-                    const dot = c.vx * normalX + c.vy * normalY;
-                    
-                    c.vx = c.vx - 2 * dot * normalX;
-                    c.vy = c.vy - 2 * dot * normalY;
-                    
-                    nx = normalX * BOUNDARY_RADIUS;
-                    ny = normalY * BOUNDARY_RADIUS;
-
-                    // Corner hit approximation in a circle (strike specific quadrants)
-                    if (Math.abs(nx) > BOUNDARY_RADIUS*0.6 && Math.abs(ny) > BOUNDARY_RADIUS*0.6) {
-                        if (index === 0) windingP1++;
-                        if (index === 1) windingP2++;
+                // Physics routing based on active Geometry Tab
+                if (isHyperbolic) {
+                    const dist = getHyperbolicDistance(nx, ny);
+                    if (dist > BOUNDARY_RADIUS) {
+                        // Pocket Detection
+                        if (Math.abs(nx) > 0.55 && Math.abs(ny) > 0.55) {
+                            index === 0 ? p1Score++ : p2Score++;
+                            respawnColt(index);
+                            return; // Skip rest of physics for this colt
+                        } else {
+                            const normalX = nx / dist;
+                            const normalY = ny / dist;
+                            const dot = c.vx * normalX + c.vy * normalY;
+                            c.vx = c.vx - 2 * dot * normalX;
+                            c.vy = c.vy - 2 * dot * normalY;
+                            nx = normalX * BOUNDARY_RADIUS;
+                            ny = normalY * BOUNDARY_RADIUS;
+                        }
+                    }
+                } else {
+                    if (Math.abs(nx) > BOUNDARY_RADIUS || Math.abs(ny) > BOUNDARY_RADIUS) {
+                        // Pocket Detection
+                        if (Math.abs(nx) > BOUNDARY_RADIUS - 0.15 && Math.abs(ny) > BOUNDARY_RADIUS - 0.15) {
+                            index === 0 ? p1Score++ : p2Score++;
+                            respawnColt(index);
+                            return;
+                        } else {
+                            if (Math.abs(nx) > BOUNDARY_RADIUS) { c.vx *= -1; nx = Math.sign(nx) * BOUNDARY_RADIUS; }
+                            if (Math.abs(ny) > BOUNDARY_RADIUS) { c.vy *= -1; ny = Math.sign(ny) * BOUNDARY_RADIUS; }
+                        }
                     }
                 }
 
                 c.x = nx;
                 c.y = ny;
-                
                 c.hist.push({x: nx, y: ny});
-                if (c.hist.length > 20) c.hist.shift();
+                if (c.hist.length > 25) c.hist.shift();
             });
 
             globalTime++;
         }
 
+        // --- Custom Pixel Font (Full A-Z, 0-9) ---
+        const font = {
+            'A':[0,1,0, 1,0,1, 1,1,1, 1,0,1, 1,0,1], 'B':[1,1,0, 1,0,1, 1,1,0, 1,0,1, 1,1,0],
+            'C':[1,1,1, 1,0,0, 1,0,0, 1,0,0, 1,1,1], 'D':[1,1,0, 1,0,1, 1,0,1, 1,0,1, 1,1,0],
+            'E':[1,1,1, 1,0,0, 1,1,0, 1,0,0, 1,1,1], 'F':[1,1,1, 1,0,0, 1,1,0, 1,0,0, 1,0,0],
+            'G':[0,1,1, 1,0,0, 1,0,1, 1,0,1, 0,1,1], 'H':[1,0,1, 1,0,1, 1,1,1, 1,0,1, 1,0,1],
+            'I':[1,1,1, 0,1,0, 0,1,0, 0,1,0, 1,1,1], 'J':[0,0,1, 0,0,1, 0,0,1, 1,0,1, 0,1,0],
+            'K':[1,0,1, 1,1,0, 1,0,0, 1,1,0, 1,0,1], 'L':[1,0,0, 1,0,0, 1,0,0, 1,0,0, 1,1,1],
+            'M':[1,0,1, 1,1,1, 1,0,1, 1,0,1, 1,0,1], 'N':[1,1,1, 1,0,1, 1,0,1, 1,0,1, 1,0,1],
+            'O':[1,1,1, 1,0,1, 1,0,1, 1,0,1, 1,1,1], 'P':[1,1,1, 1,0,1, 1,1,1, 1,0,0, 1,0,0],
+            'Q':[1,1,1, 1,0,1, 1,0,1, 1,1,1, 0,0,1], 'R':[1,1,1, 1,0,1, 1,1,0, 1,0,1, 1,0,1],
+            'S':[1,1,1, 1,0,0, 1,1,1, 0,0,1, 1,1,1], 'T':[1,1,1, 0,1,0, 0,1,0, 0,1,0, 0,1,0],
+            'U':[1,0,1, 1,0,1, 1,0,1, 1,0,1, 1,1,1], 'V':[1,0,1, 1,0,1, 1,0,1, 1,0,1, 0,1,0],
+            'W':[1,0,1, 1,0,1, 1,0,1, 1,1,1, 1,0,1], 'X':[1,0,1, 1,0,1, 0,1,0, 1,0,1, 1,0,1],
+            'Y':[1,0,1, 1,0,1, 0,1,0, 0,1,0, 0,1,0], 'Z':[1,1,1, 0,0,1, 0,1,0, 1,0,0, 1,1,1],
+            '0':[1,1,1, 1,0,1, 1,0,1, 1,0,1, 1,1,1], '1':[0,1,0, 1,1,0, 0,1,0, 0,1,0, 1,1,1],
+            '2':[1,1,1, 0,0,1, 1,1,1, 1,0,0, 1,1,1], '3':[1,1,1, 0,0,1, 1,1,1, 0,0,1, 1,1,1],
+            '4':[1,0,1, 1,0,1, 1,1,1, 0,0,1, 0,0,1], '5':[1,1,1, 1,0,0, 1,1,1, 0,0,1, 1,1,1],
+            '6':[1,1,1, 1,0,0, 1,1,1, 1,0,1, 1,1,1], '7':[1,1,1, 0,0,1, 0,0,1, 0,0,1, 0,0,1],
+            '8':[1,1,1, 1,0,1, 1,1,1, 1,0,1, 1,1,1], '9':[1,1,1, 1,0,1, 1,1,1, 0,0,1, 1,1,1],
+            ':':[0,0,0, 0,1,0, 0,0,0, 0,1,0, 0,0,0], ' ':[0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,0,0],
+            '[':[1,1,0, 1,0,0, 1,0,0, 1,0,0, 1,1,0], ']':[0,1,1, 0,0,1, 0,0,1, 0,0,1, 0,1,1],
+            '!':[0,1,0, 0,1,0, 0,1,0, 0,0,0, 0,1,0], '-':[0,0,0, 0,0,0, 1,1,1, 0,0,0, 0,0,0]
+        };
+
+        function drawText(text, startX, startY, colorABGR, scale = 1) {
+            let cx = startX;
+            for (let i = 0; i < text.length; i++) {
+                const char = text[i].toUpperCase();
+                const glyph = font[char] || font[' '];
+                for (let gy = 0; gy < 5; gy++) {
+                    for (let gx = 0; gx < 3; gx++) {
+                        if (glyph[gy * 3 + gx]) {
+                            // Scale drawing
+                            for(let sy=0; sy<scale; sy++) {
+                                for(let sx=0; sx<scale; sx++) {
+                                    const px = cx + (gx * scale) + sx;
+                                    const py = startY + (gy * scale) + sy;
+                                    if (px >= 0 && px < GRID_RES && py >= 0 && py < GRID_RES) {
+                                        buf[py * GRID_RES + px] = colorABGR;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                cx += (3 * scale) + scale; // Spacing logic
+            }
+        }
+
         // --- Ruliad Renderer ---
         function renderLoop() {
-            if (!isRunning) return;
+            if (gameState === 'BOOT') return;
             updatePhysics();
 
             const t = globalTime * 0.05;
+
+            // 1. DYNAMIC COLOR GENERATION (Audio Reactive)
+            const cWave1 = makeColor(150 + bassLevel*105, 0, 50 + bassLevel*155);
+            const cWave2 = makeColor(0, 100 + trebleLevel*155, 150 + trebleLevel*105);
+            const cInter = makeColor(255 - bassLevel*50, 100 + trebleLevel*155, 0);
+            const cVoid  = makeColor(10 + bassLevel*20, 5, 20 + trebleLevel*30);
+
+            // Interface Colors
+            const cP1 = 0xFFFFdd00; // Cyan
+            const cP2 = 0xFFff00ff; // Neon Magenta
+            const cHUD = 0xFFaaffaa;
+            const cAlert = 0xFF0000FF; // Red
+            const cOnline = (globalTime % 30 < 15) ? cHUD : makeColor(50, 150, 50); // Blinking
 
             for (let i = 0; i < buf.length; i++) {
                 const gx = i % GRID_RES;
@@ -247,76 +328,116 @@
                 const nx = (gx / GRID_RES) * 2 - 1;
                 const ny = (gy / GRID_RES) * 2 - 1;
 
-                const dist = getHyperbolicDistance(nx, ny);
+                let isBoundary = false;
+                let isPocket = false;
+                let warp = 1;
 
-                // Outside Hyperbolic Disk
-                if (dist > BOUNDARY_RADIUS + 0.02) {
-                    buf[i] = COLORS.VOID;
+                // Structure processing
+                if (isHyperbolic) {
+                    const dist = getHyperbolicDistance(nx, ny);
+                    if (dist > BOUNDARY_RADIUS + 0.02) { buf[i] = cVoid; continue; }
+                    if (dist > BOUNDARY_RADIUS - 0.02) isBoundary = true;
+                    
+                    warp = 1 / (1 - Math.pow(dist/BOUNDARY_RADIUS, 2) + 0.1);
+                    if (dist > BOUNDARY_RADIUS - 0.15 && Math.abs(nx) > 0.55 && Math.abs(ny) > 0.55) isPocket = true;
+                } else {
+                    if (Math.abs(nx) > BOUNDARY_RADIUS + 0.02 || Math.abs(ny) > BOUNDARY_RADIUS + 0.02) { buf[i] = cVoid; continue; }
+                    if (Math.abs(nx) > BOUNDARY_RADIUS - 0.02 || Math.abs(ny) > BOUNDARY_RADIUS - 0.02) isBoundary = true;
+                    
+                    warp = 1;
+                    if (Math.abs(nx) > BOUNDARY_RADIUS - 0.15 && Math.abs(ny) > BOUNDARY_RADIUS - 0.15) isPocket = true;
+                }
+
+                // Render Pockets (Holes)
+                if (isPocket) {
+                    const swirl = Math.sin(nx * 15 + ny * 15 - t * 3);
+                    buf[i] = swirl > 0.5 ? makeColor(80, 0, 80) : makeColor(0, 0, 0);
                     continue;
                 }
-                
-                // Boundary Edge Ring
-                if (dist > BOUNDARY_RADIUS - 0.02) {
-                    buf[i] = COLORS.WAVE_H; // Bright cyan edge
+
+                // Render Boundary Wall
+                if (isBoundary) {
+                    buf[i] = cWave2;
                     continue;
                 }
 
-                // Grid Lines (Warped by distance)
-                // The closer to the edge, the denser the grid (Hyperbolic illusion)
-                const warp = 1 / (1 - Math.pow(dist/BOUNDARY_RADIUS, 2) + 0.1);
+                // Draw Grid Lines
                 const gridX = Math.abs(Math.sin(nx * 15 * warp));
                 const gridY = Math.abs(Math.sin(ny * 15 * warp));
                 if (gridX < 0.1 || gridY < 0.1) {
-                    buf[i] = COLORS.GRID;
+                    buf[i] = 0xFF111111;
                     continue;
                 }
 
-                // Chladni Interference Hologram (Driven by audio)
-                // Standing wave changes topology/color mapping
+                // Holographic Chladni Interference Pattern
                 const k = 12 * warp; 
                 const u1 = p1Wave.amp * Math.cos(k * nx - t + p1Wave.phase);
                 const u2 = p2Wave.amp * Math.sin(k * ny + t + p2Wave.phase);
-                const interference = Math.abs(u1 * u2 + Math.sin(dist * 20 - t));
+                const interference = Math.abs(u1 * u2 + Math.sin((nx*nx+ny*ny) * 10 - t));
 
-                if (interference > 0.8) buf[i] = COLORS.WAVE_H;
-                else if (interference > 0.4) buf[i] = COLORS.WAVE_M;
-                else if (interference > 0.1) buf[i] = COLORS.WAVE_L;
-                else buf[i] = COLORS.DEEP;
+                if (interference > 0.8) buf[i] = cWave2;
+                else if (interference > 0.4) buf[i] = cInter;
+                else if (interference > 0.1) buf[i] = cWave1;
+                else buf[i] = makeColor(30, 0, 20);
 
-                // Draw Colts (Balls) and Trails
+                // Draw Colts and Trails
                 let drawn = false;
                 for (let c = 0; c < colts.length; c++) {
                     const colt = colts[c];
-                    // Ball
+                    const cColor = c === 0 ? cP1 : cP2;
+                    
                     if (Math.pow(nx - colt.x, 2) + Math.pow(ny - colt.y, 2) < 0.002) {
-                        buf[i] = colt.color;
-                        drawn = true;
-                        break;
+                        buf[i] = cColor;
+                        drawn = true; break;
                     }
-                    // Trail
                     for (let p of colt.hist) {
                         if (Math.pow(nx - p.x, 2) + Math.pow(ny - p.y, 2) < 0.0005) {
-                            buf[i] = colt.color & 0x77FFFFFF; // Dimmed trail
-                            drawn = true;
-                            break;
+                            buf[i] = cColor & 0x77FFFFFF;
+                            drawn = true; break;
                         }
                     }
                     if(drawn) break;
                 }
             }
 
-            // --- Render Pixel HUD over the matrix ---
-            // Top Left
-            drawText("P1:COLT", 2, 2, COLORS.P1_BALL);
-            drawText("W:" + windingP1.toString().padStart(3,'0'), 2, 8, COLORS.HUD);
+            // --- HUD Rendering ---
+            // Top Left (P1 Score)
+            drawText("P1:" + p1Score.toString().padStart(2, '0'), 2, 2, cP1);
             
-            // Top Right
-            drawText("P2:COLT", GRID_RES - 29, 2, COLORS.P2_BALL);
-            drawText("W:" + windingP2.toString().padStart(3,'0'), GRID_RES - 21, 8, COLORS.HUD);
+            // Top Right (P2 Score)
+            drawText("P2:" + p2Score.toString().padStart(2, '0'), GRID_RES - 20, 2, cP2);
 
-            // Bottom Center
-            drawText("HOLO_METRIC", GRID_RES/2 - 21, GRID_RES - 12, COLORS.WAVE_M);
-            drawText("AUDIO_SYNC", GRID_RES/2 - 19, GRID_RES - 6, COLORS.HUD);
+            // Top Center (Timer)
+            const timeColor = timeRemaining <= 10 ? cAlert : cHUD; // Turns red at 10 seconds
+            drawText("T:" + timeRemaining.toString().padStart(2, '0'), GRID_RES/2 - 8, 2, timeColor);
+
+            // Bottom Left (Online Status)
+            drawText("[ ONLINE ]", 2, GRID_RES - 7, cOnline);
+            drawText("PING 24MS", 2, GRID_RES - 13, makeColor(50,150,50));
+
+            // Tab Toggle Button (Bottom Center)
+            const tabText = isHyperbolic ? "[ GEO: HYPER ]" : "[ GEO: RECT ]";
+            drawText(tabText, GRID_RES/2 - 27, GRID_RES - 7, cHUD);
+
+            // --- Win Condition Overlay ---
+            if (gameState === 'GAMEOVER') {
+                for(let i=0; i<buf.length; i++) buf[i] = (buf[i] & 0x44FFFFFF);
+                
+                let winText, winColor;
+                if (p1Score > p2Score) {
+                    winText = "P1 WINS!";
+                    winColor = cP1;
+                } else if (p2Score > p1Score) {
+                    winText = "P2 WINS!";
+                    winColor = cP2;
+                } else {
+                    winText = "DRAW!";
+                    winColor = cHUD;
+                }
+                
+                drawText(winText, GRID_RES/2 - 15, GRID_RES/2 - 10, winColor, 1);
+                drawText("CLICK TO REMATCH", GRID_RES/2 - 31, GRID_RES/2 + 5, cHUD, 1);
+            }
 
             // Push to screen
             offCtx.putImageData(imgData, 0, 0);
