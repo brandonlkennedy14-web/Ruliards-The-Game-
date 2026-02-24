@@ -50,11 +50,11 @@
 
     <script>
         // --- Core Architectural Constants ---
-        const TARGET_PIXELS = 25600; // Max out the Ruliad resolution limit
+        const TARGET_PIXELS = 25600; 
         const BOUNDARY_RADIUS = 0.85; 
         const MATCH_DURATION = 60; 
 
-        // --- Hardware Buffer Setup (Dynamic Aspect Ratio) ---
+        // --- Hardware Buffer Setup ---
         const canvas = document.getElementById('sim-canvas');
         const ctx = canvas.getContext('2d');
         const offCanvas = document.createElement('canvas');
@@ -65,16 +65,12 @@
         let imgData, buf;
 
         function resize() {
-            // Provide fallbacks to prevent division by zero or Infinity errors
-            // which can occur when window dimensions are briefly 0 during iframe initialization.
             const w = Math.max(1, window.innerWidth || 800);
             const h = Math.max(1, window.innerHeight || 600);
-            
             canvas.width = w;
             canvas.height = h;
             ctx.imageSmoothingEnabled = false;
 
-            // Dynamically calculate grid to fit screen perfectly without cropping
             const aspect = w / h;
             GRID_H = Math.max(1, Math.floor(Math.sqrt(TARGET_PIXELS / aspect)));
             GRID_W = Math.max(1, Math.floor(GRID_H * aspect));
@@ -87,53 +83,38 @@
         window.addEventListener('resize', resize);
         resize();
 
-        // --- Multi-Dimensional State ---
+        // --- State ---
         let gameState = 'BOOT'; 
-        let geoMode = 2; // Default to MORPH (Live Topology)
-        let gameRule = 0; // Default to SINK
-        let visMode = 0; // 0 = NORMAL, 1 = MUNKER-WHITE ILLUSION
+        let geoMode = 2; // Default: MORPH
+        let gameRule = 0; // Default: SINK
+        let visMode = 0; // 0 = NORM, 1 = ILLUS
         
         let globalTime = 0;
         let matchStartTime = 0;
         let timeRemaining = MATCH_DURATION;
-        
         let p1Score = 0;
         let p2Score = 0;
 
-        // Audio Waves & Dynamic Color Levels
-        let p1Wave = { amp: 0, phase: 0, freq: 0.03 }; // Bass
-        let p2Wave = { amp: 0, phase: 0, freq: 0.05 }; // Treble
-        let bassLevel = 0;
-        let trebleLevel = 0;
+        let p1Wave = { amp: 0, phase: 0, freq: 0.03 };
+        let p2Wave = { amp: 0, phase: 0, freq: 0.05 };
+        let bassLevel = 0, trebleLevel = 0;
 
-        // --- Dynamic ABGR Color Engine ---
         function makeColor(r, g, b) {
             return 0xFF000000 | (Math.floor(b) << 16) | (Math.floor(g) << 8) | Math.floor(r);
         }
 
-        // --- Two-Player "Colts" ---
         let colts = [];
         function resetMatch() {
             colts = [
                 { x: -0.2, y: 0.2, vx: 0, vy: 0, hist: [] },
                 { x: 0.2, y: -0.2, vx: 0, vy: 0, hist: [] }
             ];
-            p1Score = 0;
-            p2Score = 0;
-            timeRemaining = MATCH_DURATION;
+            p1Score = 0, p2Score = 0, timeRemaining = MATCH_DURATION;
             matchStartTime = Date.now();
             gameState = 'PLAYING';
         }
 
-        function respawnColt(index) {
-            colts[index].x = 0;
-            colts[index].y = 0;
-            colts[index].vx = (Math.random() - 0.5) * 0.02;
-            colts[index].vy = (Math.random() - 0.5) * 0.02;
-            colts[index].hist = [];
-        }
-
-        // --- Audio Context Engine ---
+        // --- Audio ---
         let audioCtx, analyser, dataArray;
         async function initAudio() {
             try {
@@ -142,72 +123,59 @@
                 analyser = audioCtx.createAnalyser();
                 const source = audioCtx.createMediaStreamSource(stream);
                 source.connect(analyser);
-                
                 analyser.fftSize = 256;
                 dataArray = new Uint8Array(analyser.frequencyBinCount);
-                
                 document.getElementById('boot-seq').style.opacity = '0';
                 setTimeout(() => {
                     document.getElementById('boot-seq').style.display = 'none';
                     resetMatch();
                     requestAnimationFrame(renderLoop);
                 }, 1000);
-            } catch (err) {
-                alert("Audio access is required to warp the grid.");
-            }
+            } catch (err) { alert("Mic access required."); }
         }
         document.getElementById('boot-seq').addEventListener('click', initAudio);
 
-        // --- UI Interactions ---
+        // --- Interaction ---
         canvas.addEventListener('pointerdown', (e) => {
             if (gameState === 'BOOT') return;
             if (gameState === 'GAMEOVER') { resetMatch(); return; }
-
             const rect = canvas.getBoundingClientRect();
-            // Prevent division by zero
-            const rectWidth = Math.max(1, rect.width);
-            const rectHeight = Math.max(1, rect.height);
-            
-            const gx = Math.floor((e.clientX - rect.left) * (GRID_W / rectWidth));
-            const gy = Math.floor((e.clientY - rect.top) * (GRID_H / rectHeight));
+            const gx = Math.floor((e.clientX - rect.left) * (GRID_W / Math.max(1, rect.width)));
+            const gy = Math.floor((e.clientY - rect.top) * (GRID_H / Math.max(1, rect.height)));
 
-            // Bottom UI hitboxes (Adjusted up to prevent edge cutoffs)
-            if (gy > GRID_H - 26) {
+            // Lifted hitboxes to prevent browser UI blocking
+            if (gy > GRID_H - 30) {
                 if (gx < GRID_W / 2) {
-                    geoMode = (geoMode + 1) % 3; // Left click toggles geometry
+                    geoMode = (geoMode + 1) % 3;
                 } else {
-                    if (gy < GRID_H - 13) gameRule = (gameRule + 1) % 2; // Right Top toggles mode
-                    else visMode = (visMode + 1) % 2; // Right Bottom toggles illusion
+                    if (gy < GRID_H - 15) gameRule = (gameRule + 1) % 2;
+                    else visMode = (visMode + 1) % 2;
                 }
             }
         });
 
-        // --- Physics Engine ---
+        // --- Physics ---
         function getHyperbolicDistance(x, y) { return Math.sqrt(x*x + y*y); }
 
-        function handlePocketEvent(coltIndex) {
-            if (gameRule === 0) {
-                coltIndex === 0 ? p1Score++ : p2Score++; // SINK
-            } else {
-                coltIndex === 0 ? p2Score++ : p1Score++; // SURVIVE
-            }
-            respawnColt(coltIndex);
+        function handlePocketEvent(index) {
+            if (gameRule === 0) index === 0 ? p1Score++ : p2Score++;
+            else index === 0 ? p2Score++ : p1Score++;
+            
+            // TELEPORT: Move to opposite side and nudge slightly inward to prevent re-collision
+            colts[index].x = -colts[index].x * 0.9;
+            colts[index].y = -colts[index].y * 0.9;
+            colts[index].hist = [];
         }
 
         function updatePhysics() {
             if (gameState !== 'PLAYING') return;
-
             const elapsed = Math.floor((Date.now() - matchStartTime) / 1000);
             timeRemaining = Math.max(0, MATCH_DURATION - elapsed);
             if (timeRemaining === 0) { gameState = 'GAMEOVER'; return; }
 
             analyser.getByteFrequencyData(dataArray);
-            
-            let b = 0; for(let i = 0; i < 8; i++) b += dataArray[i];
-            bassLevel = (b / 8) / 255;
-            
-            let t = 0; for(let i = 20; i < 50; i++) t += dataArray[i];
-            trebleLevel = (t / 30) / 255;
+            let b = 0; for(let i=0; i<8; i++) b += dataArray[i]; bassLevel = (b/8)/255;
+            let t = 0; for(let i=20; i<50; i++) t += dataArray[i]; trebleLevel = (t/30)/255;
 
             p1Wave.amp = bassLevel * 2.0;
             p2Wave.amp = trebleLevel * 2.0;
@@ -216,53 +184,42 @@
 
             colts.forEach((c, index) => {
                 const wave = index === 0 ? p1Wave : p2Wave;
-                
-                // PHYSICS DAMPENING: Halved inputs (Divided by 400 instead of 200) for a heavier, cinematic feel
-                const fx = (wave.amp / 400) * Math.cos(wave.freq * globalTime + wave.phase);
-                const fy = (wave.amp / 400) * Math.sin(wave.freq * globalTime + wave.phase * 1.1); 
-                
-                c.vx = (c.vx + fx) * 0.98; 
-                c.vy = (c.vy + fy) * 0.98;
-
-                let nx = c.x + c.vx;
-                let ny = c.y + c.vy;
+                // HEAVY PHYSICS: Divided by 800 for high precision
+                const fx = (wave.amp / 800) * Math.cos(wave.freq * globalTime + wave.phase);
+                const fy = (wave.amp / 800) * Math.sin(wave.freq * globalTime + wave.phase * 1.1); 
+                c.vx = (c.vx + fx) * 0.98; c.vy = (c.vy + fy) * 0.98;
+                let nx = c.x + c.vx, ny = c.y + c.vy;
                 const dist = getHyperbolicDistance(nx, ny);
 
-                if (geoMode === 0) {
+                if (geoMode === 0) { // HYPER
                     if (dist > BOUNDARY_RADIUS) {
                         if (Math.abs(nx) > 0.50 && Math.abs(ny) > 0.50) { handlePocketEvent(index); return; }
                         const nX = nx/dist, nY = ny/dist, dot = c.vx*nX + c.vy*nY;
-                        c.vx -= 2*dot*nX; c.vy -= 2*dot*nY;
-                        nx = nX*BOUNDARY_RADIUS; ny = nY*BOUNDARY_RADIUS;
+                        c.vx -= 2*dot*nX; c.vy -= 2*dot*nY; nx = nX*BOUNDARY_RADIUS; ny = nY*BOUNDARY_RADIUS;
                     }
-                } 
-                else if (geoMode === 1) {
+                } else if (geoMode === 1) { // RECT
                     if (Math.abs(nx) > BOUNDARY_RADIUS || Math.abs(ny) > BOUNDARY_RADIUS) {
                         if (Math.abs(nx) > BOUNDARY_RADIUS - 0.15 && Math.abs(ny) > BOUNDARY_RADIUS - 0.15) { handlePocketEvent(index); return; }
                         if (Math.abs(nx) > BOUNDARY_RADIUS) { c.vx *= -1; nx = Math.sign(nx)*BOUNDARY_RADIUS; }
                         if (Math.abs(ny) > BOUNDARY_RADIUS) { c.vy *= -1; ny = Math.sign(ny)*BOUNDARY_RADIUS; }
                     }
-                }
-                else if (geoMode === 2) {
-                    const currentRadius = BOUNDARY_RADIUS + Math.sin(globalTime * 0.05) * 0.05 + bassLevel * 0.1;
-                    if (dist > currentRadius) {
+                } else if (geoMode === 2) { // MORPH
+                    const rad = BOUNDARY_RADIUS + Math.sin(globalTime * 0.05) * 0.05 + bassLevel * 0.1;
+                    if (dist > rad) {
                         const theta = Math.atan2(ny, nx);
                         if (Math.abs(Math.sin(2 * theta + globalTime * 0.03)) > 0.9) { handlePocketEvent(index); return; }
                         const nX = nx/dist, nY = ny/dist, dot = c.vx*nX + c.vy*nY;
-                        c.vx -= 2*dot*nX; c.vy -= 2*dot*nY;
-                        nx = nX*currentRadius; ny = nY*currentRadius;
+                        c.vx -= 2*dot*nX; c.vy -= 2*dot*nY; nx = nX*rad; ny = nY*rad;
                     }
                 }
-
                 c.x = nx; c.y = ny;
                 c.hist.push({x: nx, y: ny});
                 if (c.hist.length > 25) c.hist.shift();
             });
-
             globalTime++;
         }
 
-        // --- Custom Pixel Font Engine ---
+        // --- Font ---
         const font = {
             'A':[0,1,0, 1,0,1, 1,1,1, 1,0,1, 1,0,1], 'B':[1,1,0, 1,0,1, 1,1,0, 1,0,1, 1,1,0],
             'C':[1,1,1, 1,0,0, 1,0,0, 1,0,0, 1,1,1], 'D':[1,1,0, 1,0,1, 1,0,1, 1,0,1, 1,1,0],
@@ -288,207 +245,97 @@
             '.':[0,0,0, 0,0,0, 0,0,0, 0,0,0, 0,1,0], '/':[0,0,1, 0,0,1, 0,1,0, 1,0,0, 1,0,0]
         };
 
-        function drawText(text, startX, startY, colorABGR, scale = 1) {
-            let cx = startX;
-            for (let i = 0; i < text.length; i++) {
-                const char = text[i].toUpperCase();
-                const glyph = font[char] || font[' '];
-                for (let gy = 0; gy < 5; gy++) {
-                    for (let gx = 0; gx < 3; gx++) {
-                        if (glyph[gy * 3 + gx]) {
+        function drawText(text, x, y, col, scale = 1) {
+            let cx = x;
+            for (let i=0; i<text.length; i++) {
+                const glyph = font[text[i].toUpperCase()] || font[' '];
+                for(let gy=0; gy<5; gy++) {
+                    for(let gx=0; gx<3; gx++) {
+                        if(glyph[gy*3+gx]) {
                             for(let sy=0; sy<scale; sy++) {
                                 for(let sx=0; sx<scale; sx++) {
-                                    const px = Math.floor(cx + (gx * scale) + sx);
-                                    const py = Math.floor(startY + (gy * scale) + sy);
-                                    if (px >= 0 && px < GRID_W && py >= 0 && py < GRID_H) {
-                                        buf[py * GRID_W + px] = colorABGR;
-                                    }
+                                    const px = Math.floor(cx+(gx*scale)+sx), py = Math.floor(y+(gy*scale)+sy);
+                                    if(px>=0 && px<GRID_W && py>=0 && py<GRID_H) buf[py*GRID_W+px] = col;
                                 }
                             }
                         }
                     }
                 }
-                cx += (3 * scale) + scale;
+                cx += (3*scale)+scale;
             }
         }
 
-        // --- Ruliad Renderer ---
+        // --- Render ---
         function renderLoop() {
-            if (gameState === 'BOOT') return;
-            updatePhysics();
+            if(gameState === 'BOOT') return; updatePhysics();
+            const t = globalTime * 0.05, minD = Math.min(GRID_W, GRID_H);
+            const cW1 = makeColor(150+bassLevel*105, 0, 50+bassLevel*155), cW2 = makeColor(0, 100+trebleLevel*155, 150+trebleLevel*105), cI = makeColor(255-bassLevel*50, 100+trebleLevel*155, 0);
+            const cP1 = 0xFFFFdd00, cP2 = 0xFFff00ff, cH = 0xFFaaffaa, cA = 0xFF0000FF, cO = (globalTime%30<15)?cH:makeColor(50,150,50);
+            const cS1 = makeColor(255, 50, 200), cS2 = makeColor(50, 255, 100), cNB = makeColor(240, 200, 100);
 
-            const t = globalTime * 0.05;
-            const minDim = Math.min(GRID_W, GRID_H);
+            for (let i=0; i<buf.length; i++) {
+                const gx = i%GRID_W, gy = Math.floor(i/GRID_W), nx = (gx-GRID_W/2)/(minD/2), ny = (gy-GRID_H/2)/(minD/2);
+                let isB = false, isP = false, isOut = false, warp = 1, curR = BOUNDARY_RADIUS;
 
-            const cWave1 = makeColor(150 + bassLevel*105, 0, 50 + bassLevel*155);
-            const cWave2 = makeColor(0, 100 + trebleLevel*155, 150 + trebleLevel*105);
-            const cInter = makeColor(255 - bassLevel*50, 100 + trebleLevel*155, 0);
-            
-            const cP1 = 0xFFFFdd00; // Cyan Base
-            const cP2 = 0xFFff00ff; // Magenta Base
-            const cHUD = 0xFFaaffaa;
-            const cAlert = 0xFF0000FF; 
-            const cOnline = (globalTime % 30 < 15) ? cHUD : makeColor(50, 150, 50);
-
-            // Optical Illusion Specific Variables
-            const cStripe1 = makeColor(255, 50, 200); // Magenta Illusion Overlay
-            const cStripe2 = makeColor(50, 255, 100); // Green Illusion Overlay
-            const cNeutralBall = makeColor(240, 200, 100); // Neutral Gold/Tan
-
-            for (let i = 0; i < buf.length; i++) {
-                const gx = i % GRID_W;
-                const gy = Math.floor(i / GRID_W);
-                
-                const nx = (gx - GRID_W/2) / (minDim/2);
-                const ny = (gy - GRID_H/2) / (minDim/2);
-
-                let isBoundary = false;
-                let isPocket = false;
-                let isOutside = false;
-                let warp = 1;
-                const dist = getHyperbolicDistance(nx, ny);
-                
-                let currentRadius = BOUNDARY_RADIUS;
-
-                // --- Boundary Geometry Setup ---
-                if (geoMode === 0) { // HYPER
-                    if (dist > BOUNDARY_RADIUS + 0.02) isOutside = true;
-                    if (dist > BOUNDARY_RADIUS - 0.02 && dist <= BOUNDARY_RADIUS + 0.02) isBoundary = true;
-                    warp = 1 / (1 - Math.pow(Math.min(dist/BOUNDARY_RADIUS, 0.99), 2) + 0.1);
-                    if (dist > BOUNDARY_RADIUS - 0.15 && Math.abs(nx) > 0.50 && Math.abs(ny) > 0.50) isPocket = true;
-                } 
-                else if (geoMode === 1) { // RECT
-                    if (Math.abs(nx) > BOUNDARY_RADIUS + 0.02 || Math.abs(ny) > BOUNDARY_RADIUS + 0.02) isOutside = true;
-                    if ((Math.abs(nx) > BOUNDARY_RADIUS - 0.02 && Math.abs(nx) <= BOUNDARY_RADIUS + 0.02 && Math.abs(ny) <= BOUNDARY_RADIUS + 0.02) || 
-                        (Math.abs(ny) > BOUNDARY_RADIUS - 0.02 && Math.abs(ny) <= BOUNDARY_RADIUS + 0.02 && Math.abs(nx) <= BOUNDARY_RADIUS + 0.02)) isBoundary = true;
-                    warp = 1;
-                    if (Math.abs(nx) > BOUNDARY_RADIUS - 0.15 && Math.abs(ny) > BOUNDARY_RADIUS - 0.15 && Math.abs(nx) <= BOUNDARY_RADIUS && Math.abs(ny) <= BOUNDARY_RADIUS) isPocket = true;
-                }
-                else if (geoMode === 2) { // MORPH
-                    currentRadius = BOUNDARY_RADIUS + Math.sin(t * 1.0) * 0.05 + bassLevel * 0.1;
-                    if (dist > currentRadius + 0.02) isOutside = true;
-                    if (dist > currentRadius - 0.02 && dist <= currentRadius + 0.02) isBoundary = true;
-                    warp = 1 / (1 - Math.pow(Math.min(dist/currentRadius, 0.99), 2) + 0.1);
-                    const theta = Math.atan2(ny, nx);
-                    if (dist > currentRadius - 0.15 && dist <= currentRadius && Math.abs(Math.sin(2 * theta + globalTime * 0.03)) > 0.9) isPocket = true;
+                if (geoMode === 0) {
+                    if (getHyperbolicDistance(nx, ny) > BOUNDARY_RADIUS+0.02) isOut = true;
+                    if (getHyperbolicDistance(nx, ny) > BOUNDARY_RADIUS-0.02 && getHyperbolicDistance(nx, ny) <= BOUNDARY_RADIUS+0.02) isB = true;
+                    warp = 1/(1-Math.pow(Math.min(getHyperbolicDistance(nx,ny)/BOUNDARY_RADIUS, 0.99), 2)+0.1);
+                    if (getHyperbolicDistance(nx,ny)>BOUNDARY_RADIUS-0.15 && Math.abs(nx)>0.5 && Math.abs(ny)>0.5) isP = true;
+                } else if (geoMode === 1) {
+                    if (Math.abs(nx)>BOUNDARY_RADIUS+0.02 || Math.abs(ny)>BOUNDARY_RADIUS+0.02) isOut = true;
+                    if ((Math.abs(nx)>BOUNDARY_RADIUS-0.02 && Math.abs(nx)<=BOUNDARY_RADIUS+0.02 && Math.abs(ny)<=BOUNDARY_RADIUS+0.02) || (Math.abs(ny)>BOUNDARY_RADIUS-0.02 && Math.abs(ny)<=BOUNDARY_RADIUS+0.02 && Math.abs(nx)<=BOUNDARY_RADIUS+0.02)) isB = true;
+                    warp = 1; if (Math.abs(nx)>BOUNDARY_RADIUS-0.15 && Math.abs(ny)>BOUNDARY_RADIUS-0.15 && Math.abs(nx)<=BOUNDARY_RADIUS && Math.abs(ny)<=BOUNDARY_RADIUS) isP = true;
+                } else if (geoMode === 2) {
+                    curR = BOUNDARY_RADIUS + Math.sin(t)*0.05 + bassLevel*0.1;
+                    if (getHyperbolicDistance(nx, ny) > curR+0.02) isOut = true;
+                    if (getHyperbolicDistance(nx, ny) > curR-0.02 && getHyperbolicDistance(nx, ny) <= curR+0.02) isB = true;
+                    warp = 1/(1-Math.pow(Math.min(getHyperbolicDistance(nx,ny)/curR, 0.99), 2)+0.1);
+                    if (getHyperbolicDistance(nx,ny)>curR-0.15 && getHyperbolicDistance(nx,ny)<=curR && Math.abs(Math.sin(2*Math.atan2(ny,nx)+globalTime*0.03))>0.9) isP = true;
                 }
 
-                // --- Calculate Underlying Base Pixel ---
-                let bgPixel = makeColor(30, 0, 20); // Default Void
-
-                if (isOutside && !isBoundary && !isPocket) {
-                    const bgTheta = Math.atan2(ny, nx);
-                    const foam = Math.sin(dist * 15 - t) * Math.cos(bgTheta * 8 + t * 0.5);
-                    if (foam > 0.6) bgPixel = makeColor(20 + bassLevel*30, 0, 40 + trebleLevel*30);
-                    else if (foam > 0.2) bgPixel = makeColor(5, 15 + bassLevel*15, 30);
-                    else bgPixel = makeColor(2, 2, 5);
-                } else if (isPocket) {
-                    const swirl = Math.sin(nx * 15 + ny * 15 - t * 3);
-                    bgPixel = swirl > 0.5 ? makeColor(80, 0, 80) : makeColor(0, 0, 0);
-                } else if (isBoundary) {
-                    bgPixel = cWave2;
-                } else {
-                    const gridX = Math.abs(Math.sin(nx * 15 * warp));
-                    const gridY = Math.abs(Math.sin(ny * 15 * warp));
-                    if (gridX < 0.1 || gridY < 0.1) {
-                        bgPixel = 0xFF111111;
-                    } else {
-                        const innerTheta = Math.atan2(ny, nx);
-                        const spiral = Math.sin(innerTheta * 4 + dist * 10 - t * 2) * 0.5;
-                        const k = 12 * warp; 
-                        const u1 = p1Wave.amp * Math.cos(k * nx - t + p1Wave.phase);
-                        const u2 = p2Wave.amp * Math.sin(k * ny + t + p2Wave.phase);
-                        const interference = Math.abs(u1 * u2 + Math.sin((nx*nx+ny*ny) * 12 - t) + spiral);
-
-                        if (interference > 0.8) bgPixel = cWave2;
-                        else if (interference > 0.4) bgPixel = cInter;
-                        else if (interference > 0.1) bgPixel = cWave1;
+                let bgP = makeColor(30, 0, 20);
+                if (isOut && !isB && !isP) {
+                    const foam = Math.sin(getHyperbolicDistance(nx,ny)*15-t)*Math.cos(Math.atan2(ny,nx)*8+t*0.5);
+                    bgP = foam>0.6?makeColor(20+bassLevel*30, 0, 40+trebleLevel*30):foam>0.2?makeColor(5, 15+bassLevel*15, 30):makeColor(2,2,5);
+                } else if (isP) {
+                    // VOID HOLE RENDERING: Deep black center with glowing edge
+                    const swirl = Math.sin(nx*15+ny*15-t*3);
+                    bgP = swirl>0.8?makeColor(120, 0, 100):makeColor(0,0,0);
+                } else if (isB) { bgP = cW2; }
+                else {
+                    const gX = Math.abs(Math.sin(nx*15*warp)), gY = Math.abs(Math.sin(ny*15*warp));
+                    if (gX<0.1 || gY<0.1) bgP = 0xFF111111;
+                    else {
+                        const inter = Math.abs(p1Wave.amp*Math.cos(12*warp*nx-t+p1Wave.phase) * p2Wave.amp*Math.sin(12*warp*ny+t+p2Wave.phase) + Math.sin((nx*nx+ny*ny)*12-t) + Math.sin(Math.atan2(ny,nx)*4+getHyperbolicDistance(nx,ny)*10-t*2)*0.5);
+                        bgP = inter>0.8?cW2:inter>0.4?cI:inter>0.1?cW1:makeColor(30,0,20);
                     }
                 }
 
-                // Distance checks for balls
-                const distSqP1 = Math.pow(nx - colts[0].x, 2) + Math.pow(ny - colts[0].y, 2);
-                const distSqP2 = Math.pow(nx - colts[1].x, 2) + Math.pow(ny - colts[1].y, 2);
-                const isP1 = distSqP1 < 0.002;
-                const isP2 = distSqP2 < 0.002;
-
-                // --- Final Render Logic (Normal vs Munker-White Illusion) ---
+                const distP1 = Math.pow(nx-colts[0].x,2)+Math.pow(ny-colts[0].y,2), distP2 = Math.pow(nx-colts[1].x,2)+Math.pow(ny-colts[1].y,2), isP1 = distP1<0.002, isP2 = distP2<0.002;
                 if (visMode === 0) {
-                    // NORMAL RENDER
-                    if (isP1) { buf[i] = cP1; continue; }
-                    if (isP2) { buf[i] = cP2; continue; }
-
-                    // Render Trails
-                    let drawn = false;
-                    for (let p of colts[0].hist) { if (Math.pow(nx - p.x, 2) + Math.pow(ny - p.y, 2) < 0.0005) { buf[i] = cP1 & 0x77FFFFFF; drawn = true; break; } }
-                    if (drawn) continue;
-                    for (let p of colts[1].hist) { if (Math.pow(nx - p.x, 2) + Math.pow(ny - p.y, 2) < 0.0005) { buf[i] = cP2 & 0x77FFFFFF; drawn = true; break; } }
-                    if (drawn) continue;
-
-                    buf[i] = bgPixel;
+                    if (isP1) { buf[i]=cP1; continue; } if (isP2) { buf[i]=cP2; continue; }
+                    let drawn=false;
+                    for (let p of colts[0].hist) if(Math.pow(nx-p.x,2)+Math.pow(ny-p.y,2)<0.0005){buf[i]=cP1&0x77FFFFFF;drawn=true;break;} if(drawn)continue;
+                    for (let p of colts[1].hist) if(Math.pow(nx-p.x,2)+Math.pow(ny-p.y,2)<0.0005){buf[i]=cP2&0x77FFFFFF;drawn=true;break;} if(drawn)continue;
+                    buf[i] = bgP;
                 } else {
-                    // MUNKER-WHITE OPTICAL ILLUSION RENDER
-                    // Both balls are identical 'cNeutralBall' memory colors. 
-                    // P1 is layered under Stripe 2 (making it look Magenta).
-                    // P2 is layered under Stripe 1 (making it look Green).
-
-                    const isStripe1 = (gy % 4) < 2; // Horizontal scanlines
-                    const stripeC = isStripe1 ? cStripe1 : cStripe2;
-
-                    // Blend the background with the scanlines to preserve context
-                    const bgR = bgPixel & 0xFF, bgG = (bgPixel >> 8) & 0xFF, bgB = (bgPixel >> 16) & 0xFF;
-                    const sR = stripeC & 0xFF, sG = (stripeC >> 8) & 0xFF, sB = (stripeC >> 16) & 0xFF;
-                    const blendedBG = makeColor((bgR+sR)/2, (bgG+sG)/2, (bgB+sB)/2);
-
-                    if (isP1) {
-                        buf[i] = isStripe1 ? cStripe1 : cNeutralBall;
-                    } else if (isP2) {
-                        buf[i] = !isStripe1 ? cStripe2 : cNeutralBall;
-                    } else {
-                        // Suppress trails in illusion mode to keep the optical trick crisp
-                        buf[i] = blendedBG;
-                    }
+                    const isS = (gy%4)<2, sC = isS?cS1:cS2, bgR=bgP&0xFF, bgG=(bgP>>8)&0xFF, bgB=(bgP>>16)&0xFF, sR=sC&0xFF, sG=(sC>>8)&0xFF, sB=(sC>>16)&0xFF;
+                    if(isP1) buf[i]=isS?cS1:cNB; else if(isP2) buf[i]=!isS?cS2:cNB; else buf[i]=makeColor((bgR+sR)/2,(bgG+sG)/2,(bgB+sB)/2);
                 }
             }
 
-            // --- HUD Anchors (Pushed inwards to prevent device edge cutoffs) ---
-            drawText("P1:" + p1Score.toString().padStart(2, '0'), 6, 6, cP1);
-            drawText("P2:" + p2Score.toString().padStart(2, '0'), Math.max(0, GRID_W - 26), 6, cP2);
-            
-            const timeColor = timeRemaining <= 10 ? cAlert : cHUD;
-            drawText("T:" + timeRemaining.toString().padStart(2, '0'), Math.floor(GRID_W/2) - 8, 6, timeColor);
-
-            // BuyMeACoffee specifically for the illusion tab
-            if (visMode === 1) {
-                const bmcText = "https://buymeacoffee.com/brandonkennedy";
-                const bmcWidth = bmcText.length * 4;
-                drawText(bmcText, Math.max(0, Math.floor((GRID_W - bmcWidth) / 2)), 16, cHUD);
-            }
-
-            drawText("ONLINE:24MS", 6, Math.max(0, GRID_H - 12), cOnline);
-            const geoString = geoMode === 0 ? "HYPER" : geoMode === 1 ? "RECT" : "MORPH";
-            drawText("GEO:" + geoString, 6, Math.max(0, GRID_H - 20), cHUD);
-            
-            const ruleString = gameRule === 0 ? "SINK" : "SURV";
-            drawText("MODE:" + ruleString, Math.max(0, GRID_W - 44), Math.max(0, GRID_H - 20), cHUD);
-            
-            const visString = visMode === 0 ? "NORM" : "ILLUS";
-            drawText("VIS:" + visString, Math.max(0, GRID_W - 40), Math.max(0, GRID_H - 12), cHUD);
-
-            // --- Win Sequence ---
+            drawText("P1:"+p1Score.toString().padStart(2,'0'), 8, 8, cP1); drawText("P2:"+p2Score.toString().padStart(2,'0'), Math.max(0,GRID_W-28), 8, cP2);
+            drawText("T:"+timeRemaining.toString().padStart(2,'0'), Math.floor(GRID_W/2)-8, 8, (timeRemaining<=10?cA:cH));
+            if (visMode === 1) { const bT = "BUYMEACOFFEE.COM/SUPPORT"; drawText(bT, Math.floor((GRID_W-bT.length*4)/2), 18, cH); }
+            drawText("ONLINE:24MS", 8, Math.max(0,GRID_H-14), cO); drawText("GEO:"+(geoMode===0?"HYPER":geoMode===1?"RECT":"MORPH"), 8, Math.max(0,GRID_H-22), cH);
+            drawText("MODE:"+(gameRule===0?"SINK":"SURV"), Math.max(0,GRID_W-46), Math.max(0,GRID_H-22), cH); drawText("VIS:"+(visMode===0?"NORM":"ILLUS"), Math.max(0,GRID_W-42), Math.max(0,GRID_H-14), cH);
             if (gameState === 'GAMEOVER') {
-                for(let i=0; i<buf.length; i++) buf[i] = (buf[i] & 0x44FFFFFF);
-                let winText, winColor;
-                if (p1Score > p2Score) { winText = "P1 WINS!"; winColor = cP1; } 
-                else if (p2Score > p1Score) { winText = "P2 WINS!"; winColor = cP2; } 
-                else { winText = "DRAW!"; winColor = cHUD; }
-                drawText(winText, Math.floor(GRID_W/2) - 15, Math.floor(GRID_H/2) - 10, winColor, 1);
-                drawText("CLICK TO REMATCH", Math.floor(GRID_W/2) - 31, Math.floor(GRID_H/2) + 5, cHUD, 1);
+                for(let i=0; i<buf.length; i++) buf[i] = (buf[i]&0x44FFFFFF);
+                const wT = p1Score>p2Score?"P1 WINS!":p2Score>p1Score?"P2 WINS!":"DRAW!", wC = p1Score>p2Score?cP1:p2Score>p1Score?cP2:cH;
+                drawText(wT, Math.floor(GRID_W/2)-15, Math.floor(GRID_H/2)-10, wC); drawText("CLICK TO REMATCH", Math.floor(GRID_W/2)-31, Math.floor(GRID_H/2)+5, cH);
             }
-
-            offCtx.putImageData(imgData, 0, 0);
-            ctx.drawImage(offCanvas, 0, 0, canvas.width, canvas.height);
-            requestAnimationFrame(renderLoop);
+            offCtx.putImageData(imgData, 0, 0); ctx.drawImage(offCanvas, 0, 0, canvas.width, canvas.height); requestAnimationFrame(renderLoop);
         }
     </script>
 </body>
