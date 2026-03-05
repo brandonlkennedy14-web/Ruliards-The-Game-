@@ -3,499 +3,1442 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sim3Colts // Holographic Online Arena</title>
+    <title>Retro Ruliad Billiards</title>
+    <script src="https://cdn.tailwindcss.com"></script>
     <style>
+        @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+
         body {
             background-color: #000;
+            color: #0f0;
+            font-family: 'Press Start 2P', cursive;
             margin: 0;
+            height: 100vh;
+            width: 100vw;
             overflow: hidden;
-            user-select: none;
-            touch-action: none;
+            cursor: crosshair;
         }
+
         canvas {
             image-rendering: pixelated;
+            display: block;
+            position: absolute;
+            top: 0;
+            left: 0;
             width: 100vw;
             height: 100vh;
-            display: block;
+            z-index: 1;
         }
-        #boot-seq {
-            position: absolute;
-            inset: 0;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            background: rgba(0,0,0,0.92);
-            color: #00ffcc;
-            font-family: monospace;
-            cursor: pointer;
-            z-index: 50;
-            transition: opacity 1s;
-        }
-        .pulse { animation: p 1.5s infinite; }
-        @keyframes p { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
 
-        /* Cross-game effect overlay */
-        #cross-overlay {
+        .hud {
             position: absolute;
-            inset: 0;
+            top: 15px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 95%;
+            max-width: 1000px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 10px;
+            text-shadow: 3px 3px 0 #000, -1px -1px 0 #000;
+            color: #0ff;
+            z-index: 10;
+            background: rgba(0, 0, 0, 0.6);
+            padding: 10px;
+            border: 2px solid #0ff;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .hud span { flex: 1; text-align: center; white-space: nowrap; }
+        .hud-highlight { color: #f0f; }
+        .hud-mic { color: #ff0; cursor: pointer; }
+
+        .target-container {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: rgba(255,255,255,0.1);
+            padding: 4px 10px;
+            border-radius: 4px;
+            border: 1px solid #0ff;
+        }
+
+        #targetCanvas {
+            width: 120px;
+            height: 30px;
+        }
+
+        .scanlines {
+            position: absolute;
+            top: 0; left: 0; width: 100vw; height: 100vh;
+            background: linear-gradient(to bottom, rgba(255,255,255,0), rgba(255,255,255,0) 50%, rgba(0,0,0,0.3) 50%, rgba(0,0,0,0.3));
+            background-size: 100% 4px;
             pointer-events: none;
-            opacity: 0;
+            z-index: 5;
+        }
+
+        .bmc-link {
+            position: absolute;
+            bottom: 15px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: #f0f;
+            text-decoration: none;
+            font-size: 10px;
+            z-index: 20;
+            text-shadow: 2px 2px 0 #000;
+            transition: color 0.2s;
+        }
+
+        .bmc-link:hover {
+            color: #0ff;
+        }
+
+        /* D-PAD for P1 snake */
+        #dpad {
+            position: absolute;
+            bottom: max(18px, env(safe-area-inset-bottom, 18px));
+            left: 14px;
+            z-index: 30;
+            display: grid;
+            grid-template-columns: repeat(3, 36px);
+            grid-template-rows: repeat(3, 36px);
+            gap: 3px;
+            pointer-events: auto;
+        }
+        .dp {
+            background: rgba(0,255,255,0.12);
+            border: 1px solid rgba(0,255,255,0.4);
+            color: #0ff;
+            font-size: 14px;
+            display: flex; align-items: center; justify-content: center;
+            border-radius: 4px;
+            cursor: pointer;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .dp:active { background: rgba(0,255,255,0.3); }
+        #dpad .empty { background: transparent; border: none; }
+
+        /* Snake HUD row */
+        #snake-hud {
+            position: absolute;
+            top: 62px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 18px;
+            font-size: 10px;
+            font-family: 'Press Start 2P', cursive;
+            z-index: 30;
+            pointer-events: none;
+            text-shadow: 2px 2px 0 #000;
+        }
+        #sn-p1  { color: #FFdd00; }
+        #sn-mid { color: #aaff88; }
+        #sn-p2  { color: #ff00ff; }
+        #sn-winner {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-family: 'Press Start 2P', cursive;
+            font-size: 13px;
+            text-align: center;
             z-index: 40;
-            transition: opacity 0.15s;
+            pointer-events: none;
+            display: none;
         }
     </style>
 </head>
 <body>
 
-    <div id="boot-seq">
-        <h1 style="font-size: 2rem; letter-spacing: 0.5em; text-shadow: 0 0 10px #00ffcc;">SIM3COLTS</h1>
-        <p style="margin-top:10px; font-size:0.7rem; letter-spacing:2px; color:rgba(0,255,204,0.5)">0 PING ORACLE // HARMONIC SUNRISE</p>
-        <p class="pulse" style="margin-top:20px">CONNECTING TO ORACLE CHAIN...</p>
-        <p style="font-size: 0.7rem; color: #ff00aa; margin-top: 20px;">[ CLICK TO ENGAGE ]</p>
+    <div class="hud" id="ui-panel">
+        <span>DIM: <span id="ui-dim" class="hud-highlight">1</span></span>
+        <span>BOUNCES: <span id="ui-winding" class="hud-highlight">0</span></span>
+        <span class="hidden md:inline">HARMONIC: <span id="ui-harmonic" class="hud-highlight">0.0</span></span>
+        <span>BEST: <span id="ui-best" class="hud-highlight">0</span></span>
+        <div class="target-container">
+            <span>SINK SEQUENCE:</span>
+            <canvas id="targetCanvas" width="120" height="30"></canvas>
+        </div>
+        <span class="hidden md:inline hud-highlight">DRAG TO SHOOT</span>
+        <span id="ui-mic" class="hud-mic">[CLICK FOR AUDIO]</span>
     </div>
 
-    <div id="cross-overlay"></div>
-    <canvas id="sim-canvas"></canvas>
+    <canvas id="gameCanvas"></canvas>
+    <div class="scanlines"></div>
+    <a href="https://buymeacoffee.com/brandonkennedy" target="_blank" class="bmc-link">BUYMEACOFFEE.COM/BRANDONKENNEDY</a>
 
-    <script src="../oracle-harmonic/oracle-harmonic.js"></script>
+    <!-- D-PAD for P1 Snake -->
+    <div id="dpad">
+        <div class="empty"></div>
+        <div class="dp" id="dp-up">▲</div>
+        <div class="empty"></div>
+        <div class="dp" id="dp-left">◀</div>
+        <div class="empty"></div>
+        <div class="dp" id="dp-right">▶</div>
+        <div class="empty"></div>
+        <div class="dp" id="dp-down">▼</div>
+        <div class="empty"></div>
+    </div>
+    <div id="snake-hud">
+        <span id="sn-p1">P1 SNAKE: 0</span>
+        <span id="sn-mid">FIRST TO 10</span>
+        <span id="sn-p2">P2 SNAKE: 0</span>
+    </div>
+    <div id="sn-winner"></div>
+
     <script>
-        // ============================================================
-        // SIM3COLTS + 0 PING ORACLE + HARMONIC SUNRISE
-        // ============================================================
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const targetCanvas = document.getElementById('targetCanvas');
+        const tCtx = targetCanvas.getContext('2d');
 
-        const TARGET_PIXELS  = 25600;
-        const BOUNDARY_RADIUS = 0.85;
-        const MATCH_DURATION  = 60;
+        // --- BACKGROUND RULIAD SETUP ---
+        const ruliadCanvas = document.createElement('canvas');
+        const rCtx = ruliadCanvas.getContext('2d');
+        const CA_PIXEL = 8;
+        let CA_W = 1, CA_H = 1, caData;
+        let bgRowColors = new Uint8Array(0); 
 
-        const canvas   = document.getElementById('sim-canvas');
-        const ctx      = canvas.getContext('2d');
-        const offCanvas = document.createElement('canvas');
-        const offCtx   = offCanvas.getContext('2d');
+        // --- BOARD RULIAD (POOL TABLE) SETUP ---
+        const boardCanvas = document.createElement('canvas');
+        const bCtx = boardCanvas.getContext('2d');
+        const B_CA_SIZE = 64; 
+        boardCanvas.width = B_CA_SIZE;
+        boardCanvas.height = B_CA_SIZE;
 
-        let GRID_W = 100, GRID_H = 100;
-        let imgData, buf;
+        let bData = new Uint8Array(B_CA_SIZE * B_CA_SIZE); 
+        let bDataNext = new Uint8Array(B_CA_SIZE * B_CA_SIZE); 
+        let trailData = new Uint8Array(B_CA_SIZE * B_CA_SIZE); 
 
-        function resize() {
-            const w = Math.max(1, window.innerWidth || 800);
-            const h = Math.max(1, window.innerHeight || 600);
-            canvas.width = w; canvas.height = h;
-            ctx.imageSmoothingEnabled = false;
-            const aspect = w / h;
-            GRID_H = Math.max(1, Math.floor(Math.sqrt(TARGET_PIXELS / aspect)));
-            GRID_W = Math.max(1, Math.floor(GRID_H * aspect));
-            offCanvas.width = GRID_W; offCanvas.height = GRID_H;
-            imgData = offCtx.createImageData(GRID_W, GRID_H);
-            buf = new Uint32Array(imgData.data.buffer);
-        }
-        window.addEventListener('resize', resize);
-        resize();
+        const palettes = [
+            [[0,255,255], [255,0,255], [255,255,0], [0,0,255]], 
+            [[0,255,0], [128,0,128], [0,128,255], [255,165,0]], 
+            [[255,0,100], [0,255,100], [100,0,255], [255,255,255]],
+            [[255,50,0], [0,255,200], [200,0,255], [255,255,0]]
+        ];
+        let currentPalette = palettes[0];
+        let bgPaletteShift = 0; 
 
-        // ---- STATE ----
-        let gameState     = 'BOOT';
-        let geoMode       = 2;
-        let gameRule      = 0;
-        let visMode       = 0;
-        let globalTime    = 0;
-        let matchStartTime = 0;
-        let timeRemaining = MATCH_DURATION;
-        let p1Score = 0, p2Score = 0;
+        const munkerPairs = [
+            ['#00FFFF', '#FF00FF'], 
+            ['#800080', '#00FF00'], 
+            ['#0000FF', '#FFFF00'], 
+            ['#FF0000', '#0000FF']  
+        ];
+        let currentMunkerPair = munkerPairs[0];
+        let targetMunkerIndex = 0; 
 
-        // Cross-game effects pending
-        let pendingGeoMorph  = null;
-        let pendingSpeedSurge = 0;
-        let psychosisLevel   = 0;
+        let WIDTH = window.innerWidth || 800;
+        let HEIGHT = window.innerHeight || 600;
 
-        let p1Wave = { amp: 0, phase: 0, freq: 0.03 };
-        let p2Wave = { amp: 0, phase: 0, freq: 0.05 };
-        let bassLevel = 0, trebleLevel = 0;
+        let boardShape = { type: 'POLYGON', cx: 0, cy: 0, r: 0, vertices: [], pockets: [] };
+        let boardRect = { x: 0, y: 0, size: 0 };
 
-        function makeColor(r, g, b) {
-            return 0xFF000000 | (Math.floor(b) << 16) | (Math.floor(g) << 8) | Math.floor(r);
-        }
+        let currentRule = 0; 
+        let bgRule = 30; 
+        let frameCount = 0;
 
-        let colts = [];
-        function resetMatch() {
-            colts = [
-                { x: -0.2, y: 0.2, vx: 0, vy: 0, hist: [], owner: 'p1' },
-                { x:  0.2, y: -0.2, vx: 0, vy: 0, hist: [], owner: 'p2' }
-            ];
-            p1Score = 0; p2Score = 0;
-            timeRemaining  = MATCH_DURATION;
-            matchStartTime = Date.now();
-            gameState      = 'PLAYING';
-            psychosisLevel = 0;
-            pendingGeoMorph = null;
-            pendingSpeedSurge = 0;
-        }
-
-        // ---- ORACLE INIT ----
-        const instanceId = OracleHarmonic.init('sim3colts');
-
-        // P2 driven by Harmonic Sunrise
-        OracleHarmonic.onP2Trigger((audioState, evt) => {
-            if (gameState !== 'PLAYING') return;
-            const c = colts[1]; // P2 colt
-            // Audio drives P2 force: bass = x-axis, treble = y-axis
-            const ghost = OracleHarmonic.getGhost('p2');
-            const gForce = ghost.confidence > 0.3 ? 0.6 : 1.0;
-            c.vx += (audioState.bass    - 0.5) * 0.06 * gForce;
-            c.vy += (audioState.treble  - 0.5) * 0.06 * gForce;
-            c.vx += (audioState.dominant - 0.5) * 0.03;
-
-            OracleHarmonic.broadcast('P2_MOVE', 'p2', { x: c.x, y: c.y, vx: c.vx, vy: c.vy });
-        });
-
-        // Cross-game effects arriving FROM retro-ruliad
-        OracleHarmonic.onCrossGame((evt) => {
-            if (evt.gameId !== 'sim3colts') return;
-
-            if (evt.type === 'GEO_MORPH') {
-                // Retro Ruliad dimension shifted — morph our geometry
-                pendingGeoMorph = (evt.data.dimension % 3);
-                showCrossEffect('rgba(170,68,255,0.3)');
-            }
-            if (evt.type === 'SPEED_SURGE') {
-                // Long bounce chain in Ruliad — our colts gain speed
-                pendingSpeedSurge = evt.data.boost || 0.5;
-                showCrossEffect('rgba(255,204,0,0.25)');
-            }
-            if (evt.type === 'PSYCHOSIS') {
-                psychosisLevel = Math.min(1, psychosisLevel + 0.35);
-                showCrossEffect('rgba(255,51,102,0.3)');
-            }
-        });
-
-        // Listen for any event for ghost provenance HUD
-        OracleHarmonic.onEvent((evt) => {
-            // Could surface in pixel HUD if desired — keeping invisible per spec
-        });
-
-        // ---- CROSS-EFFECT OVERLAY ----
-        function showCrossEffect(color) {
-            const el = document.getElementById('cross-overlay');
-            el.style.background = `radial-gradient(ellipse, ${color} 0%, transparent 70%)`;
-            el.style.opacity = '1';
-            setTimeout(() => { el.style.opacity = '0'; }, 400);
-        }
-
-        // ---- BOOT ----
-        document.getElementById('boot-seq').addEventListener('click', async () => {
-            document.getElementById('boot-seq').querySelector('p.pulse').textContent = 'STARTING AUDIO...';
-            const mode = await OracleHarmonic.startAudio();
-            document.getElementById('boot-seq').style.opacity = '0';
-            setTimeout(() => {
-                document.getElementById('boot-seq').style.display = 'none';
-                resetMatch();
-                OracleHarmonic.broadcast('MATCH_START', 'system', { geoMode, gameRule });
-                requestAnimationFrame(renderLoop);
-            }, 1000);
-        });
-
-        // ---- INTERACTION ----
-        canvas.addEventListener('pointerdown', (e) => {
-            if (gameState === 'BOOT') return;
-            if (gameState === 'GAMEOVER') { resetMatch(); return; }
-            const rect = canvas.getBoundingClientRect();
-            const gx = Math.floor((e.clientX - rect.left) * (GRID_W / Math.max(1, rect.width)));
-            const gy = Math.floor((e.clientY - rect.top)  * (GRID_H / Math.max(1, rect.height)));
-            if (gy > GRID_H - 35) {
-                if (gx < GRID_W / 2) {
-                    geoMode = (geoMode + 1) % 3;
-                    OracleHarmonic.broadcast('GEO_CHANGE', 'p1', { geoMode });
-                } else {
-                    if (gy < GRID_H - 18) {
-                        gameRule = (gameRule + 1) % 2;
-                        OracleHarmonic.broadcast('RULE_CHANGE', 'p1', { gameRule });
-                    } else {
-                        visMode = (visMode + 1) % 2;
-                    }
-                }
-            }
-        });
-
-        // ---- PHYSICS ----
-        function getHyperbolicDistance(x, y) { return Math.sqrt(x*x + y*y); }
-
-        function checkHole(nx, ny, rad) {
-            if (geoMode === 0) return (getHyperbolicDistance(nx,ny) > rad-0.15 && Math.abs(nx) > 0.5 && Math.abs(ny) > 0.5);
-            if (geoMode === 1) return (Math.abs(nx) > rad-0.15 && Math.abs(ny) > rad-0.15);
-            const theta = Math.atan2(ny,nx);
-            return (getHyperbolicDistance(nx,ny) > rad-0.15 && Math.abs(Math.sin(2*theta + globalTime*0.03)) > 0.9);
-        }
-
-        function handlePocketEvent(coltIndex, nx, ny) {
-            const colt = colts[coltIndex];
-            const owner = colt.owner;
-
-            // Check provenance — who was first to this pocket zone?
-            const firstEvt = OracleHarmonic.whoWasFirst('POCKET');
-            const isFirst  = !firstEvt;
-
-            OracleHarmonic.broadcast('POCKET', owner, {
-                x: colt.x, y: colt.y,
-                coltIndex,
-                isFirst,
-                speed: Math.hypot(colt.vx, colt.vy)
-            });
-
-            if (isFirst) {
-                OracleHarmonic.broadcast('FIRST', owner, { type: 'POCKET', x: colt.x, y: colt.y });
-            }
-
-            if (gameRule === 0) coltIndex === 0 ? p1Score++ : p2Score++;
-            else coltIndex === 0 ? p2Score++ : p1Score++;
-
-            // TELEPORT: exit opposite hole
-            colts[coltIndex].x = -colts[coltIndex].x * 0.95;
-            colts[coltIndex].y = -colts[coltIndex].y * 0.95;
-            colts[coltIndex].hist = [];
-
-            OracleHarmonic.broadcast('TELEPORT', owner, {
-                fromX: colt.x, fromY: colt.y,
-                toX: -colt.x, toY: -colt.y
-            });
-        }
-
-        function updatePhysics() {
-            if (gameState !== 'PLAYING') return;
-            const elapsed = Math.floor((Date.now() - matchStartTime) / 1000);
-            timeRemaining = Math.max(0, MATCH_DURATION - elapsed);
-            if (timeRemaining === 0) {
-                gameState = 'GAMEOVER';
-                OracleHarmonic.broadcast('MATCH_END', 'system', { p1Score, p2Score });
-                return;
-            }
-
-            // Get audio state directly for wave driving
-            const audio = OracleHarmonic.getAudioState();
-            bassLevel   = audio.bass;
-            trebleLevel = audio.treble;
-
-            p1Wave.amp = bassLevel * 2.0;
-            p2Wave.amp = trebleLevel * 2.0;
-            p1Wave.phase += 0.02 + bassLevel * 0.05;
-            p2Wave.phase += 0.03 + trebleLevel * 0.05;
-
-            // Apply pending cross-game effects
-            if (pendingGeoMorph !== null) {
-                geoMode = pendingGeoMorph;
-                pendingGeoMorph = null;
-            }
-            if (psychosisLevel > 0) {
-                psychosisLevel = Math.max(0, psychosisLevel - 0.004);
-            }
-
-            colts.forEach((c, index) => {
-                const wave  = index === 0 ? p1Wave : p2Wave;
-                const surge = index === 1 ? pendingSpeedSurge : 0;
-
-                let fx = (wave.amp / 800) * Math.cos(wave.freq * globalTime + wave.phase);
-                let fy = (wave.amp / 800) * Math.sin(wave.freq * globalTime + wave.phase * 1.1);
-
-                // Psychosis randomises force
-                if (psychosisLevel > 0.1) {
-                    fx += (Math.random() - 0.5) * psychosisLevel * 0.003;
-                    fy += (Math.random() - 0.5) * psychosisLevel * 0.003;
-                }
-
-                c.vx = (c.vx + fx) * 0.98 * (1 + surge * 0.1);
-                c.vy = (c.vy + fy) * 0.98 * (1 + surge * 0.1);
-
-                let nx = c.x + c.vx;
-                let ny = c.y + c.vy;
-                const dist  = getHyperbolicDistance(nx, ny);
-                let curR    = BOUNDARY_RADIUS;
-                if (geoMode === 2) curR += Math.sin(globalTime * 0.05) * 0.05 + bassLevel * 0.1;
-
-                if (checkHole(nx, ny, curR)) {
-                    c.vx += (Math.sign(nx) * curR - nx) * 0.01;
-                    c.vy += (Math.sign(ny) * curR - ny) * 0.01;
-                    if (dist > curR - 0.02) { handlePocketEvent(index, nx, ny); return; }
-                }
-
-                if (geoMode === 0) {
-                    if (dist > BOUNDARY_RADIUS) {
-                        const nX = nx/dist, nY = ny/dist, dot = c.vx*nX + c.vy*nY;
-                        c.vx -= 2*dot*nX; c.vy -= 2*dot*nY; nx = nX*BOUNDARY_RADIUS; ny = nY*BOUNDARY_RADIUS;
-                    }
-                } else if (geoMode === 1) {
-                    if (Math.abs(nx) > BOUNDARY_RADIUS) { c.vx *= -1; nx = Math.sign(nx)*BOUNDARY_RADIUS; }
-                    if (Math.abs(ny) > BOUNDARY_RADIUS) { c.vy *= -1; ny = Math.sign(ny)*BOUNDARY_RADIUS; }
-                } else {
-                    if (dist > curR) {
-                        const nX = nx/dist, nY = ny/dist, dot = c.vx*nX + c.vy*nY;
-                        c.vx -= 2*dot*nX; c.vy -= 2*dot*nY; nx = nX*curR; ny = nY*curR;
-                    }
-                }
-
-                c.x = nx; c.y = ny;
-                c.hist.push({x: nx, y: ny});
-                if (c.hist.length > 25) c.hist.shift();
-
-                // Broadcast position for ghost prediction (every 10 frames)
-                if (globalTime % 10 === index * 5) {
-                    OracleHarmonic.broadcast('POSITION', c.owner, { x: nx, y: ny, vx: c.vx, vy: c.vy });
-                }
-            });
-
-            if (pendingSpeedSurge > 0) pendingSpeedSurge = Math.max(0, pendingSpeedSurge - 0.01);
-            globalTime++;
-        }
-
-        // ---- PIXEL FONT (unchanged from original) ----
-        const font = {
-            'A':[0,1,0,1,0,1,1,1,1,1,0,1,1,0,1],'B':[1,1,0,1,0,1,1,1,0,1,0,1,1,1,0],
-            'C':[1,1,1,1,0,0,1,0,0,1,0,0,1,1,1],'D':[1,1,0,1,0,1,1,0,1,1,0,1,1,1,0],
-            'E':[1,1,1,1,0,0,1,1,0,1,0,0,1,1,1],'F':[1,1,1,1,0,0,1,1,0,1,0,0,1,0,0],
-            'G':[0,1,1,1,0,0,1,0,1,1,0,1,0,1,1],'H':[1,0,1,1,0,1,1,1,1,1,0,1,1,0,1],
-            'I':[1,1,1,0,1,0,0,1,0,0,1,0,1,1,1],'J':[0,0,1,0,0,1,0,0,1,1,0,1,0,1,0],
-            'K':[1,0,1,1,1,0,1,0,0,1,1,0,1,0,1],'L':[1,0,0,1,0,0,1,0,0,1,0,0,1,1,1],
-            'M':[1,0,1,1,1,1,1,0,1,1,0,1,1,0,1],'N':[1,1,1,1,0,1,1,0,1,1,0,1,1,0,1],
-            'O':[1,1,1,1,0,1,1,0,1,1,0,1,1,1,1],'P':[1,1,1,1,0,1,1,1,1,1,0,0,1,0,0],
-            'R':[1,1,1,1,0,1,1,1,0,1,0,1,1,0,1],'S':[1,1,1,1,0,0,1,1,1,0,0,1,1,1,1],
-            'T':[1,1,1,0,1,0,0,1,0,0,1,0,0,1,0],'U':[1,0,1,1,0,1,1,0,1,1,0,1,1,1,1],
-            'V':[1,0,1,1,0,1,1,0,1,1,0,1,0,1,0],'W':[1,0,1,1,0,1,1,0,1,1,1,1,1,0,1],
-            'X':[1,0,1,1,0,1,0,1,0,1,0,1,1,0,1],'Y':[1,0,1,1,0,1,0,1,0,0,1,0,0,1,0],
-            'Z':[1,1,1,0,0,1,0,1,0,1,0,0,1,1,1],'0':[1,1,1,1,0,1,1,0,1,1,0,1,1,1,1],
-            '1':[0,1,0,1,1,0,0,1,0,0,1,0,1,1,1],'2':[1,1,1,0,0,1,1,1,1,1,0,0,1,1,1],
-            '3':[1,1,1,0,0,1,1,1,1,0,0,1,1,1,1],'4':[1,0,1,1,0,1,1,1,1,0,0,1,0,0,1],
-            '5':[1,1,1,1,0,0,1,1,1,0,0,1,1,1,1],'6':[1,1,1,1,0,0,1,1,1,1,0,1,1,1,1],
-            '7':[1,1,1,0,0,1,0,0,1,0,0,1,0,0,1],'8':[1,1,1,1,0,1,1,1,1,1,0,1,1,1,1],
-            '9':[1,1,1,1,0,1,1,1,1,0,0,1,1,1,1],':':[0,0,0,0,1,0,0,0,0,0,1,0,0,0,0],
-            ' ':[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],'[':[1,1,0,1,0,0,1,0,0,1,0,0,1,1,0],
-            ']':[0,1,1,0,0,1,0,0,1,0,0,1,0,1,1],'!':[0,1,0,0,1,0,0,1,0,0,0,0,0,1,0],
-            '-':[0,0,0,0,0,0,1,1,1,0,0,0,0,0,0],'.':[0,0,0,0,0,0,0,0,0,0,0,0,0,1,0],
-            '/':[0,0,1,0,0,1,0,1,0,1,0,0,1,0,0],'%':[1,0,1,0,0,1,0,1,0,1,0,0,1,0,1]
+        let gameState = {
+            dimension: 1,
+            bounces: 0,
+            best: 0,
+            state: 'PLAYING', 
+            transitionTimer: 0,
+            transitionType: 'NEXT', 
+            sinkHole: {x: 0, y: 0},
+            sinkingBall: null,
+            targetsSunk: 0
         };
 
-        function drawText(text, x, y, col, scale=1) {
-            let cx = x;
-            for (let i=0; i<text.length; i++) {
-                const glyph = font[text[i].toUpperCase()] || font[' '];
-                for(let gy=0; gy<5; gy++) for(let gx=0; gx<3; gx++) if(glyph[gy*3+gx]) for(let sy=0; sy<scale; sy++) for(let sx=0; sx<scale; sx++) {
-                    const px = Math.floor(cx+(gx*scale)+sx), py = Math.floor(y+(gy*scale)+sy);
-                    if(px>=0&&px<GRID_W&&py>=0&&py<GRID_H) buf[py*GRID_W+px]=col;
+        let impactRipples = []; 
+
+        // --- AUDIO ENGINE ---
+        let audioCtx, analyser, dataArray;
+        let micEnabled = false;
+        let currentAudioLevel = 0;
+        let harmonicSpectrum = 0;
+        let sustainedHarmonic = 0;
+
+        async function initAudio() {
+            if (micEnabled) return;
+            try {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                const source = audioCtx.createMediaStreamSource(stream);
+                analyser = audioCtx.createAnalyser();
+                analyser.fftSize = 256;
+                source.connect(analyser);
+                dataArray = new Uint8Array(analyser.frequencyBinCount);
+                micEnabled = true;
+                const uiMic = document.getElementById('ui-mic');
+                if (uiMic) {
+                    uiMic.innerText = "SONIC DRIVE: ON";
+                    uiMic.style.color = "#0f0";
                 }
-                cx += (3*scale)+scale;
+            } catch (err) {
+                const uiMic = document.getElementById('ui-mic');
+                if (uiMic) {
+                    uiMic.innerText = "MIC DENIED";
+                    uiMic.style.color = "#f00";
+                }
+            }
+        }
+        document.addEventListener('click', initAudio, { once: true });
+
+        // --- MANUAL SHOOTING CONTROLS (SLINGSHOT) ---
+        let mouse = { x: 0, y: 0, isDragging: false, startX: 0, startY: 0 };
+
+        function handlePointerDown(e) {
+            if (!micEnabled && e.type !== 'touchstart') initAudio(); 
+            mouse.isDragging = true;
+            mouse.startX = e.touches ? e.touches[0].clientX : e.clientX;
+            mouse.startY = e.touches ? e.touches[0].clientY : e.clientY;
+            mouse.x = mouse.startX;
+            mouse.y = mouse.startY;
+        }
+
+        function handlePointerMove(e) {
+            if (!mouse.isDragging) return;
+            mouse.x = e.touches ? e.touches[0].clientX : e.clientX;
+            mouse.y = e.touches ? e.touches[0].clientY : e.clientY;
+        }
+
+        function handlePointerUp(e) {
+            if (mouse.isDragging) {
+                let dx = mouse.startX - mouse.x;
+                let dy = mouse.startY - mouse.y;
+                let whiteBall = balls.find(b => b.type === 'WHITE');
+                if (whiteBall && !whiteBall.isSinking && gameState.state === 'PLAYING') {
+                    let dist = Math.hypot(dx, dy);
+                    if (dist > 300) {
+                        dx = (dx / dist) * 300;
+                        dy = (dy / dist) * 300;
+                    }
+                    whiteBall.vx += dx * 0.12;
+                    whiteBall.vy += dy * 0.12;
+                }
+                mouse.isDragging = false;
             }
         }
 
-        // ---- RENDER ----
-        function renderLoop() {
-            if (gameState === 'BOOT') return;
-            updatePhysics();
+        canvas.addEventListener('mousedown', handlePointerDown);
+        canvas.addEventListener('mousemove', handlePointerMove);
+        window.addEventListener('mouseup', handlePointerUp);
+        canvas.addEventListener('touchstart', handlePointerDown, {passive: true});
+        canvas.addEventListener('touchmove', handlePointerMove, {passive: true});
+        window.addEventListener('touchend', handlePointerUp);
 
-            const t = globalTime * 0.05;
-            const minD = Math.min(GRID_W, GRID_H);
-            const audio = OracleHarmonic.getAudioState();
-            const bL = audio.bass, tL = audio.treble;
+        // --- GENERATIVE MESH GEOMETRY ---
+        function generateGeometry() {
+            const cx = WIDTH / 2;
+            const cy = HEIGHT / 2 + 25; 
 
-            const cW1 = makeColor(150+bL*105, 0, 50+bL*155+(psychosisLevel*80));
-            const cW2 = makeColor(0, 100+tL*155, 150+tL*105);
-            const cI  = makeColor(255-bL*50, 100+tL*155, 0);
-            const cP1 = 0xFFFFdd00, cP2 = 0xFFff00ff;
-            const cH  = 0xFFaaffaa, cA  = 0xFF0000FF;
-            const cO  = (globalTime%30<15) ? cH : makeColor(50,150,50);
-            const cS1 = makeColor(255,50,200), cS2 = makeColor(50,255,100), cNB = makeColor(240,200,100);
+            // Radically randomize size per dimension
+            const scaleFactor = 0.30 + Math.random() * 0.18; 
+            const R = Math.max(10, Math.min(WIDTH, HEIGHT) * scaleFactor); 
 
-            for (let i=0; i<buf.length; i++) {
-                const gx = i%GRID_W, gy = Math.floor(i/GRID_W);
-                const nx = (gx-GRID_W/2)/(minD/2), ny = (gy-GRID_H/2)/(minD/2);
-                let isB=false, isP=false, isOut=false, warp=1;
-                let curR = BOUNDARY_RADIUS;
+            let verts = [];
+            let pockets = [];
 
-                if (geoMode===0) {
-                    if (getHyperbolicDistance(nx,ny)>BOUNDARY_RADIUS+0.02) isOut=true;
-                    if (getHyperbolicDistance(nx,ny)>BOUNDARY_RADIUS-0.02&&getHyperbolicDistance(nx,ny)<=BOUNDARY_RADIUS+0.02) isB=true;
-                    warp=1/(1-Math.pow(Math.min(getHyperbolicDistance(nx,ny)/BOUNDARY_RADIUS,0.99),2)+0.1);
-                    isP=checkHole(nx,ny,BOUNDARY_RADIUS);
-                } else if (geoMode===1) {
-                    if (Math.abs(nx)>BOUNDARY_RADIUS+0.02||Math.abs(ny)>BOUNDARY_RADIUS+0.02) isOut=true;
-                    if ((Math.abs(nx)>BOUNDARY_RADIUS-0.02&&Math.abs(nx)<=BOUNDARY_RADIUS+0.02&&Math.abs(ny)<=BOUNDARY_RADIUS+0.02)||(Math.abs(ny)>BOUNDARY_RADIUS-0.02&&Math.abs(ny)<=BOUNDARY_RADIUS+0.02&&Math.abs(nx)<=BOUNDARY_RADIUS+0.02)) isB=true;
-                    isP=checkHole(nx,ny,BOUNDARY_RADIUS);
-                } else {
-                    curR=BOUNDARY_RADIUS+Math.sin(t)*0.05+bL*0.1;
-                    if (getHyperbolicDistance(nx,ny)>curR+0.02) isOut=true;
-                    if (getHyperbolicDistance(nx,ny)>curR-0.02&&getHyperbolicDistance(nx,ny)<=curR+0.02) isB=true;
-                    warp=1/(1-Math.pow(Math.min(getHyperbolicDistance(nx,ny)/curR,0.99),2)+0.1);
-                    isP=checkHole(nx,ny,curR);
+            const types = ['POLYGON', 'STAR', 'HYPERBOLIC_SQUARE', 'HYPOTROCHOID'];
+            const type = types[Math.floor(Math.random() * types.length)];
+
+            // Random global rotation makes every shape feel entirely fresh
+            const rotOffset = Math.random() * Math.PI * 2;
+
+            if (type === 'HYPERBOLIC_SQUARE') {
+                const resolution = 200;
+                const sqBaseR = R * (0.45 + Math.random() * 0.3); // Dynamic core size
+                const lobeStrength = R * (0.2 + Math.random() * 0.4); // Dynamic petal length
+                const lobeCount = Math.floor(Math.random() * 4) * 2 + 2; // 2, 4, 6, 8 lobes
+
+                for(let i=0; i<resolution; i++) {
+                    let theta = (i / resolution) * Math.PI * 2;
+                    let cosT = Math.abs(Math.cos(theta));
+                    let sinT = Math.abs(Math.sin(theta));
+                    let rSq = sqBaseR / Math.max(cosT, sinT);
+                    let rLobe = R * 0.5 + lobeStrength * Math.cos(lobeCount * theta);
+
+                    let rFinal = Math.max(rSq, rLobe);
+                    verts.push({ x: cx + rFinal * Math.cos(theta + rotOffset), y: cy + rFinal * Math.sin(theta + rotOffset) });
+                }
+                for(let i=0; i<4; i++) {
+                    let angle = (i * Math.PI / 2) + Math.PI/4;
+                    let px = cx + (sqBaseR / Math.cos(Math.PI/4)) * Math.cos(angle + rotOffset);
+                    let py = cy + (sqBaseR / Math.cos(Math.PI/4)) * Math.sin(angle + rotOffset);
+                    pockets.push({x: px, y: py});
+                }
+            }
+            else if (type === 'POLYGON') {
+                let sides = Math.floor(Math.random() * 7) + 3; // 3 to 9 sides
+                for(let i=0; i<sides; i++) {
+                    let angle = rotOffset + (i * 2 * Math.PI / sides);
+                    let px = cx + R * Math.cos(angle);
+                    let py = cy + R * Math.sin(angle);
+                    verts.push({ x: px, y: py });
+                    pockets.push({ x: px, y: py });
+                }
+            } 
+            else if (type === 'STAR') {
+                let sides = Math.floor(Math.random() * 4) + 4; // 4 to 7 points
+                // innerRatio min 0.48 — below this corners are physically too tight for radius-14 balls
+                let innerRatio = 0.48 + Math.random() * 0.32; // 0.48 to 0.80
+                // Enforce gap width >= 3 ball diameters at every inner vertex
+                const BALL_D = 28;
+                const minGap = BALL_D * 3;
+                const gapWidth = 2 * R * innerRatio * Math.sin(Math.PI / sides);
+                if (gapWidth < minGap) {
+                    innerRatio = Math.min(0.85, minGap / (2 * R * Math.sin(Math.PI / sides)));
+                }
+                for(let i=0; i<sides * 2; i++) {
+                    let r = i % 2 === 0 ? R : R * innerRatio; 
+                    let angle = rotOffset + (i * Math.PI) / sides;
+                    let px = cx + r * Math.cos(angle);
+                    let py = cy + r * Math.sin(angle);
+                    verts.push({ x: px, y: py });
+                    if (i % 2 === 0) pockets.push({ x: px, y: py });
+                }
+            }
+            else if (type === 'HYPOTROCHOID') {
+                const numLobes = Math.floor(Math.random() * 7) + 3; // 3 to 9 lobes
+                const resolution = 200;
+                const hr = R * (0.4 + Math.random() * 0.35); // 0.4 to 0.75
+                const pr = hr * (numLobes - 1) / numLobes;
+                const d = R * (0.2 + Math.random() * 0.7); // Insanely variable sweeping loops
+                let maxDist = 0;
+
+                for(let i=0; i<resolution; i++) {
+                    let theta = (i / resolution) * Math.PI * 2 * numLobes;
+                    let x = (hr - pr) * Math.cos(theta) + d * Math.cos(((hr - pr) / pr) * theta);
+                    let y = (hr - pr) * Math.sin(theta) - d * Math.sin(((hr - pr) / pr) * theta);
+
+                    // Apply offset rotation
+                    let rotX = x * Math.cos(rotOffset) - y * Math.sin(rotOffset);
+                    let rotY = x * Math.sin(rotOffset) + y * Math.cos(rotOffset);
+
+                    verts.push({ x: cx + rotX, y: cy + rotY });
+                    let dist = Math.hypot(rotX, rotY);
+                    if (dist > maxDist) maxDist = dist;
                 }
 
-                let bgP = makeColor(30+psychosisLevel*20, 0, 20);
-                if (isOut&&!isB&&!isP) {
-                    const foam=Math.sin(getHyperbolicDistance(nx,ny)*15-t)*Math.cos(Math.atan2(ny,nx)*8+t*0.5);
-                    bgP=foam>0.6?makeColor(20+bL*30,0,40+tL*30):foam>0.2?makeColor(5,15+bL*15,30):makeColor(2,2,5);
-                } else if (isP) {
-                    const swirl=Math.sin(nx*25+ny*25-t*5);
-                    bgP=swirl>0.7?makeColor(50,0,60):makeColor(0,0,0);
-                } else if (isB) { bgP=cW2; }
-                else {
-                    const gX=Math.abs(Math.sin(nx*15*warp)), gY=Math.abs(Math.sin(ny*15*warp));
-                    if (gX<0.1||gY<0.1) bgP=0xFF111111;
+                for(let i=0; i<verts.length; i++) {
+                    let p = verts[i];
+                    if (Math.hypot(p.x - cx, p.y - cy) > maxDist * 0.95) {
+                        if (!pockets.some(pk => Math.hypot(pk.x - p.x, pk.y - p.y) < R * 0.2)) {
+                            pockets.push({x: p.x, y: p.y});
+                        }
+                    }
+                }
+            }
+
+            boardShape = { type, cx, cy, r: R, vertices: verts, pockets: pockets };
+            // Ensure bounding box covers extreme geometric extensions
+            boardRect = { x: cx - R * 1.8, y: cy - R * 1.8, size: R * 3.6 };
+        }
+
+        function drawShapePath(ctx, shape, applyAudioDistortion = false) {
+            ctx.beginPath();
+            if (shape.vertices.length === 0) return;
+
+            for(let i=0; i<shape.vertices.length; i++) {
+                let v = shape.vertices[i];
+                let px = v.x;
+                let py = v.y;
+
+                if (applyAudioDistortion && micEnabled && currentAudioLevel > 15) {
+                    let bin = Math.floor((i / shape.vertices.length) * (dataArray.length / 2));
+                    let force = (dataArray[bin] / 255) * (currentAudioLevel * 0.5);
+                    let angle = Math.atan2(v.y - shape.cy, v.x - shape.cx);
+                    px += Math.cos(angle) * force;
+                    py += Math.sin(angle) * force;
+                }
+
+                if (i === 0) ctx.moveTo(px, py);
+                else ctx.lineTo(px, py);
+            }
+            ctx.closePath();
+        }
+
+        // --- RESIZE ---
+        function resize() {
+            WIDTH = canvas.width = window.innerWidth || 320;
+            HEIGHT = canvas.height = window.innerHeight || 320;
+
+            CA_W = Math.max(1, Math.ceil(WIDTH / CA_PIXEL));
+            CA_H = Math.max(1, Math.ceil(HEIGHT / CA_PIXEL));
+
+            ruliadCanvas.width = CA_W;
+            ruliadCanvas.height = CA_H;
+            caData = new Uint8Array(CA_W * CA_H);
+            bgRowColors = new Uint8Array(CA_H);
+
+            caData[Math.floor(CA_W / 2)] = 1;
+
+            generateGeometry();
+        }
+
+        window.addEventListener('resize', () => { resize(); initBalls(); });
+
+        // --- TARGET HUD RENDERING (THE ILLUSION SHELL GAME) ---
+        function updateTargetHUD() {
+            tCtx.clearRect(0, 0, 120, 30);
+            let remaining = 4 - gameState.targetsSunk;
+
+            for (let i = 0; i < remaining; i++) {
+                let cx = 15 + i * 30;
+
+                // Base target ball is grey
+                tCtx.fillStyle = '#888888';
+                tCtx.beginPath(); tCtx.arc(cx, 15, 12, 0, Math.PI * 2); tCtx.fill();
+                tCtx.fillStyle = '#fff';
+                tCtx.beginPath(); tCtx.arc(cx, 15, 6, 0, Math.PI * 2); tCtx.fill();
+                tCtx.fillStyle = '#000';
+                tCtx.beginPath(); tCtx.arc(cx, 15, 2, 0, Math.PI * 2); tCtx.fill();
+
+                // Applying the shifting dimension palette to give them unique perceived colors
+                let colorIndex = (targetMunkerIndex + (4 - remaining) + i) % 4; 
+                let c1 = `rgb(${currentPalette[colorIndex].join(',')})`;
+                let c2 = `rgb(${currentPalette[(colorIndex+2)%4].join(',')})`;
+
+                tCtx.fillStyle = c1;
+                tCtx.fillRect(cx - 15, 3, 30, 4);
+                tCtx.fillRect(cx - 15, 23, 30, 4);
+                tCtx.fillStyle = c2;
+                tCtx.fillRect(cx - 15, 13, 30, 4);
+            }
+        }
+
+        // --- GAME LOGIC ---
+        function triggerTransition(holePoint, type, ballRef) {
+            gameState.state = 'TRANSITION';
+            gameState.transitionTimer = 150; 
+            gameState.sinkHole = holePoint;
+            gameState.transitionType = type;
+            gameState.sinkingBall = ballRef;
+
+            if (gameState.bounces > gameState.best) {
+                gameState.best = gameState.bounces;
+                const uiBest = document.getElementById('ui-best');
+                if (uiBest) uiBest.innerText = gameState.best;
+            }
+            currentAudioLevel = 90; 
+            sustainedHarmonic = 0; 
+        }
+
+        function restartGame() {
+            gameState.dimension = 1;
+            gameState.bounces = 0;
+            const uiWinding = document.getElementById('ui-winding');
+            if (uiWinding) uiWinding.innerText = "0";
+            nextDimension(true); 
+        }
+
+        function nextDimension(isReset = false) {
+            if (!isReset) gameState.dimension++;
+
+            const uiPanel = document.getElementById('ui-panel');
+            if (uiPanel) {
+                uiPanel.style.borderColor = isReset ? '#f00' : '#f0f';
+                setTimeout(() => uiPanel.style.borderColor = '#0ff', 300);
+            }
+
+            generateGeometry();
+
+            const uiDim = document.getElementById('ui-dim');
+            if (uiDim) uiDim.innerText = `${gameState.dimension} (${boardShape.type})`;
+
+            currentRule = (currentRule + 1) % 8; 
+            const interestingRules = [30, 90, 110, 150, 105, 73, 22, 126, 45, 169];
+            bgRule = interestingRules[Math.floor(Math.random() * interestingRules.length)];
+
+            currentPalette = palettes[gameState.dimension % palettes.length];
+            currentMunkerPair = munkerPairs[gameState.dimension % munkerPairs.length];
+
+            gameState.targetsSunk = 0;
+            targetMunkerIndex = Math.floor(Math.random() * 4);
+            updateTargetHUD();
+
+            caData.fill(0);
+            trailData.fill(0);
+            bData.fill(0);
+            bgRowColors.fill(bgPaletteShift);
+            impactRipples = []; 
+
+            if (caData.length > 0) caData[Math.floor(CA_W / 2)] = 1;
+
+            initBalls();
+        }
+
+        // --- PHYSICS & BALLS ---
+        const POCKET_RADIUS = 28; 
+
+        class Ball {
+            constructor(x, y, vx, vy, radius, type, trueColor) {
+                this.x = x; this.y = y; this.vx = vx; this.vy = vy; this.radius = radius;
+                this.type = type; 
+                this.trueColor = trueColor; 
+                this.angle = 0; 
+                this.isSinking = false; 
+                this.dead = false; // Flag to permanently remove from board after sinking
+                this.targetPocket = null;
+                this.lastBounce = 0;
+            }
+
+            update() {
+                if (this.isSinking || this.dead) return; 
+
+                if (micEnabled && currentAudioLevel > 20) {
+                    const dx = this.x - boardShape.cx;
+                    const dy = this.y - boardShape.cy;
+                    const dist = Math.hypot(dx, dy) || 1;
+                    const force = (currentAudioLevel * 0.008) / (dist * 0.01);
+                    this.vx += (dx / dist) * force;
+                    this.vy += (dy / dist) * force;
+                }
+
+                this.vx *= 0.985;
+                this.vy *= 0.985;
+
+                const speed = Math.hypot(this.vx, this.vy);
+                if (speed > 18) { 
+                    this.vx = (this.vx / speed) * 18;
+                    this.vy = (this.vy / speed) * 18;
+                } else if (speed < 0.05) { 
+                    this.vx = 0;
+                    this.vy = 0;
+                }
+            }
+
+            draw(ctx) {
+                if (this.dead) return;
+                ctx.save();
+                ctx.translate(this.x, this.y);
+
+                ctx.fillStyle = 'rgba(0,0,0,0.8)';
+                ctx.beginPath(); ctx.arc(4, 4, this.radius, 0, Math.PI * 2); ctx.fill();
+
+                ctx.rotate(this.angle);
+
+                ctx.fillStyle = this.trueColor;
+                ctx.beginPath(); ctx.arc(0, 0, this.radius, 0, Math.PI * 2); ctx.fill();
+
+                if (this.type === 'BLACK') {
+                    ctx.fillStyle = '#fff';
+                    ctx.beginPath(); ctx.arc(this.radius*0.2, 0, this.radius * 0.5, 0, Math.PI * 2); ctx.fill();
+                    ctx.fillStyle = '#000';
+                    ctx.beginPath(); ctx.arc(this.radius*0.2, 0, this.radius * 0.2, 0, Math.PI * 2); ctx.fill();
+                } else if (this.type === 'WHITE') {
+                    ctx.fillStyle = '#eee';
+                    ctx.beginPath(); ctx.arc(this.radius*0.2, 0, this.radius * 0.5, 0, Math.PI * 2); ctx.fill();
+                    ctx.fillStyle = '#ccc';
+                    ctx.beginPath(); ctx.arc(this.radius*0.2, 0, this.radius * 0.2, 0, Math.PI * 2); ctx.fill();
+                } else {
+                    ctx.fillStyle = '#fff';
+                    ctx.beginPath(); ctx.arc(this.radius*0.2, 0, this.radius * 0.5, 0, Math.PI * 2); ctx.fill();
+                    ctx.fillStyle = '#000';
+                    ctx.beginPath(); ctx.arc(this.radius*0.2, 0, this.radius * 0.2, 0, Math.PI * 2); ctx.fill();
+                }
+
+                ctx.restore();
+            }
+        }
+
+        let balls = [];
+        function initBalls() {
+            const cx = boardShape.cx;
+            const cy = boardShape.cy;
+            const BALL_R = 14;
+
+            // Compute true inscribed radius — shortest distance from centre to any wall.
+            // This is the real safe zone regardless of shape type.
+            function inscribedRadius() {
+                let minDist = Infinity;
+                const verts = boardShape.vertices;
+                for (let i = 0; i < verts.length; i++) {
+                    const A = verts[i];
+                    const B = verts[(i + 1) % verts.length];
+                    const dx = B.x - A.x, dy = B.y - A.y;
+                    const len2 = dx*dx + dy*dy;
+                    if (len2 === 0) continue;
+                    const t = Math.max(0, Math.min(1, ((cx - A.x)*dx + (cy - A.y)*dy) / len2));
+                    const closestX = A.x + t*dx;
+                    const closestY = A.y + t*dy;
+                    const d = Math.hypot(cx - closestX, cy - closestY);
+                    if (d < minDist) minDist = d;
+                }
+                return minDist === Infinity ? boardShape.r * 0.4 : minDist;
+            }
+
+            const safeR = inscribedRadius();
+            // Spread scales with safe zone — always fits inside actual playable area
+            const spread = Math.max(BALL_R * 2.5, Math.min(safeR * 0.6, 55));
+            const whiteDist = Math.min(spread * 1.4, safeR * 0.75);
+
+            balls = [
+                new Ball(cx,          cy,           0, 0, BALL_R, 'BLACK',  '#222222'),
+                new Ball(cx - spread, cy - spread,  0, 0, BALL_R, 'TARGET', '#888888'),
+                new Ball(cx + spread, cy - spread,  0, 0, BALL_R, 'TARGET', '#888888'),
+                new Ball(cx - spread, cy + spread,  0, 0, BALL_R, 'TARGET', '#888888'),
+                new Ball(cx + spread, cy + spread,  0, 0, BALL_R, 'TARGET', '#888888'),
+                new Ball(cx,          cy + whiteDist, 0, 0, BALL_R, 'WHITE', '#ffffff')
+            ];
+            updateTargetHUD();
+            if (typeof initSnakes === 'function') initSnakes();
+        }
+
+        // --- RENDERING ---
+        function updateBackgroundRuliad() {
+            if (CA_W <= 0 || CA_H <= 0) return;
+
+            let prevRow = new Uint8Array(CA_W);
+            for(let x=0; x<CA_W; x++) prevRow[x] = caData[(CA_H > 1 ? 1 : 0) * CA_W + x];
+
+            for (let y = CA_H - 1; y > 0; y--) {
+                for (let x = 0; x < CA_W; x++) {
+                    caData[y * CA_W + x] = caData[(y - 1) * CA_W + x];
+                }
+                bgRowColors[y] = bgRowColors[y - 1]; 
+            }
+
+            bgRowColors[0] = bgPaletteShift;
+            let activeRule = bgRule; 
+
+            if (micEnabled && currentAudioLevel > 15 && harmonicSpectrum > 5) {
+                activeRule = Math.floor(harmonicSpectrum * 2.55);
+            } 
+
+            for (let x = 0; x < CA_W; x++) {
+                const left = prevRow[x === 0 ? CA_W - 1 : x - 1] ? 4 : 0;
+                const center = prevRow[x] ? 2 : 0;
+                const right = prevRow[x === CA_W - 1 ? 0 : x + 1] ? 1 : 0;
+                caData[x] = (activeRule & (1 << (left + center + right))) ? 1 : 0;
+            }
+
+            if (gameState.state === 'PLAYING') {
+                balls.forEach(b => {
+                    if (b.dead) return;
+                    let ballCaX = Math.floor((b.x / WIDTH) * CA_W);
+                    if (ballCaX >= 0 && ballCaX < CA_W) {
+                        caData[ballCaX] = 1; 
+                    }
+                });
+            }
+
+            const imgData = rCtx.createImageData(CA_W, CA_H);
+
+            for (let y = 0; y < CA_H; y++) {
+                let rowShift = bgRowColors[y] || 0;
+                const bgCol = currentPalette[(0 + rowShift) % 4];
+                const fgCol = currentPalette[(2 + rowShift) % 4]; 
+
+                for (let x = 0; x < CA_W; x++) {
+                    const i = y * CA_W + x;
+                    const idx = i * 4;
+                    if (caData[i] > 0) {
+                        imgData.data[idx] = fgCol[0]; 
+                        imgData.data[idx+1] = fgCol[1]; 
+                        imgData.data[idx+2] = fgCol[2]; 
+                        imgData.data[idx+3] = 255;
+                    } else {
+                        imgData.data[idx] = Math.floor(bgCol[0] * 0.15); 
+                        imgData.data[idx+1] = Math.floor(bgCol[1] * 0.15); 
+                        imgData.data[idx+2] = Math.floor(bgCol[2] * 0.15); 
+                        imgData.data[idx+3] = 255;
+                    }                   
+                }
+            }
+            rCtx.putImageData(imgData, 0, 0);
+        }
+
+        function updateBoardRuliad() {
+            for(let i = 0; i < trailData.length; i++) {
+                if(trailData[i] > 0) trailData[i] = Math.max(0, trailData[i] - 3);
+            }
+
+            if (micEnabled && currentAudioLevel > 20) {
+                for (let y = 0; y < B_CA_SIZE; y++) {
+                    for (let x = 0; x < B_CA_SIZE; x++) {
+                        let dx = x - B_CA_SIZE/2;
+                        let dy = y - B_CA_SIZE/2;
+                        let angle = Math.atan2(dy, dx);
+                        let dist = Math.hypot(dx, dy);
+
+                        let bin = Math.floor((Math.abs(angle) / Math.PI) * (dataArray.length / 4));
+                        let amp = dataArray[bin] || 0;
+
+                        if (amp > 100 && Math.abs(dist - (amp/255) * (B_CA_SIZE/2)) < 2) {
+                             trailData[y * B_CA_SIZE + x] = 255;
+                        }
+                    }
+                }
+            }
+
+            const imgData = bCtx.createImageData(B_CA_SIZE, B_CA_SIZE);
+            const t = Math.floor(frameCount / 3); 
+            const scale = 1 + (gameState.dimension % 3) * 0.5;
+
+            for (let y = 0; y < B_CA_SIZE; y++) {
+                for (let x = 0; x < B_CA_SIZE; x++) {
+                    let i = y * B_CA_SIZE + x;
+                    let prevVal = bData[i]; 
+
+                    let sx = Math.floor((x - B_CA_SIZE/2) / scale);
+                    let sy = Math.floor((y - B_CA_SIZE/2) / scale);
+
+                    let vMath = 0;
+                    const ruleMod = currentRule % 8;
+
+                    if (ruleMod === 0) vMath = (sx ^ sy) ^ prevVal;                           
+                    else if (ruleMod === 1) vMath = (sx & sy) ^ (prevVal * 2);                      
+                    else if (ruleMod === 2) vMath = (sx | sy) ^ prevVal;                      
+                    else if (ruleMod === 3) vMath = Math.floor(Math.sqrt(sx*sx + sy*sy)) ^ prevVal; 
+                    else if (ruleMod === 4) vMath = (sx * sx ^ sy * sy) % Math.max(1, prevVal); 
+                    else if (ruleMod === 5) vMath = (sx * prevVal) ^ (sy * prevVal);                
+                    else if (ruleMod === 6) vMath = (sx+sy) ^ (sx-sy) ^ prevVal; 
+                    else if (ruleMod === 7) vMath = Math.abs(sx ^ sy) * 2 ^ prevVal; 
+
+                    let val = Math.abs(vMath - t*3 + trailData[i]*1.5);
+                    bDataNext[i] = val % 256;
+
+                    let colorShift = Math.floor(frameCount / 15);
+                    let colorIndex = (Math.floor(bDataNext[i] / 64) + colorShift) % 4; 
+
+                    const c = currentPalette[colorIndex];
+                    let r = c[0], g = c[1], b = c[2];
+
+                    if (trailData[i] > 200) {
+                        r = 255; g = 255; b = 0; 
+                    } else if (trailData[i] > 50) {
+                        r = 255; g = 0; b = 150; 
+                    }
+
+                    const idx = i * 4;
+                    imgData.data[idx] = r;
+                    imgData.data[idx+1] = g;
+                    imgData.data[idx+2] = b;
+                    imgData.data[idx+3] = 255;
+                }
+            }
+            for (let i = 0; i < B_CA_SIZE * B_CA_SIZE; i++) bData[i] = bDataNext[i];
+            bCtx.putImageData(imgData, 0, 0);
+        }
+
+        function drawBoard() {
+            ctx.save();
+            drawShapePath(ctx, boardShape, false); 
+            ctx.clip(); 
+
+            ctx.imageSmoothingEnabled = false;
+            ctx.drawImage(boardCanvas, boardRect.x, boardRect.y, boardRect.size, boardRect.size);
+            ctx.restore();
+
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 4;
+            drawShapePath(ctx, boardShape, true); 
+            ctx.stroke();
+        }
+
+        function drawThickMunkerWhite() {
+            ctx.save();
+            drawShapePath(ctx, boardShape);
+            ctx.clip(); 
+
+            const stripeH = 3; 
+            const gap = 3;
+
+            for (let y = boardRect.y; y < boardRect.y + boardRect.size; y += (stripeH + gap) * 2) {
+                ctx.fillStyle = currentMunkerPair[0]; 
+                ctx.fillRect(boardRect.x, y, boardRect.size, stripeH);
+
+                ctx.fillStyle = currentMunkerPair[1];
+                ctx.fillRect(boardRect.x, y + stripeH + gap, boardRect.size, stripeH);
+            }
+            ctx.restore();
+        }
+
+        function drawPockets() {
+            boardShape.pockets.forEach((p, index) => {
+                ctx.save();
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, POCKET_RADIUS, 0, Math.PI * 2);
+                ctx.clip();
+                ctx.fillStyle = '#000';
+                ctx.fill();
+
+                if (ruliadCanvas.width > 0 && ruliadCanvas.height > 0) {
+                    ctx.translate(p.x, p.y);
+                    ctx.rotate((frameCount * 0.005) + (index * Math.PI / 4));
+                    ctx.scale(0.4, 0.4); 
+                    ctx.translate(-WIDTH/2, -HEIGHT/2);
+                    ctx.drawImage(ruliadCanvas, 0, 0, WIDTH, HEIGHT);
+                }
+                ctx.restore();
+
+                ctx.save();
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, POCKET_RADIUS, 0, Math.PI * 2);
+                ctx.clip();
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, POCKET_RADIUS + 2, 0, Math.PI * 2);
+                ctx.lineWidth = 6;
+                ctx.strokeStyle = '#000';
+                ctx.shadowColor = '#000';
+                ctx.shadowBlur = 10;
+                ctx.stroke();
+                ctx.restore();
+
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, POCKET_RADIUS, 0, Math.PI * 2);
+                const fgCol = currentPalette[(2 + bgPaletteShift) % 4];
+                ctx.strokeStyle = `rgba(${fgCol[0]}, ${fgCol[1]}, ${fgCol[2]}, 0.8)`;
+                ctx.lineWidth = 3;
+                ctx.stroke();
+            });
+        }
+
+        // --- MAIN LOOP & PHYSICS RESOLUTION ---
+        function loop() {
+            frameCount++;
+
+            // Snake tick
+            snakeTick++;
+            if (snakeTick >= SNAKE_TICK) { snakeTick=0; stepSnakes(); }
+
+            if (micEnabled) {
+                analyser.getByteFrequencyData(dataArray);
+                let sum = 0, maxAmp = 0, domBin = 0;
+                for(let i=0; i<dataArray.length; i++) {
+                    sum += dataArray[i];
+                    if (dataArray[i] > maxAmp) { maxAmp = dataArray[i]; domBin = i; }
+                }
+                currentAudioLevel = sum / dataArray.length;
+                harmonicSpectrum = maxAmp > 15 ? (domBin / dataArray.length) * 100 : 0;
+                const uiHarmonic = document.getElementById('ui-harmonic');
+                if (uiHarmonic) uiHarmonic.innerText = harmonicSpectrum.toFixed(1);
+
+                if (maxAmp > 240 && harmonicSpectrum > 0) {
+                    sustainedHarmonic++;
+                    if (sustainedHarmonic > 150 && gameState.state === 'PLAYING') {
+                        triggerTransition({x: boardShape.cx, y: boardShape.cy}, 'NEXT', balls[0]);
+                    }
+                } else {
+                    sustainedHarmonic = Math.max(0, sustainedHarmonic - 2);
+                }
+            }
+
+            if (frameCount % 4 === 0) updateBackgroundRuliad();
+
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, 0, WIDTH, HEIGHT);
+
+            if (ruliadCanvas.width > 0 && ruliadCanvas.height > 0) {
+                ctx.imageSmoothingEnabled = false;
+                ctx.drawImage(ruliadCanvas, 0, 0, WIDTH, HEIGHT);
+            }
+
+            // --- DRAW VISUAL RIPPLES FROM WHITE BALL IMPACTS ---
+            ctx.save();
+            ctx.globalCompositeOperation = 'color-dodge'; 
+            for (let i = impactRipples.length - 1; i >= 0; i--) {
+                let rip = impactRipples[i];
+                rip.r += 12; 
+
+                ctx.beginPath();
+                ctx.arc(rip.x, rip.y, rip.r, 0, Math.PI * 2);
+
+                let c = currentPalette[(2 + rip.colorShift) % 4];
+                let alpha = Math.max(0, 1 - (rip.r / (Math.max(WIDTH, HEIGHT) * 0.8)));
+
+                ctx.strokeStyle = `rgba(${c[0]}, ${c[1]}, ${c[2]}, ${alpha * 0.8})`;
+                ctx.lineWidth = 25; 
+                ctx.stroke();
+
+                if (alpha <= 0) impactRipples.splice(i, 1);
+            }
+            ctx.restore();
+
+            if (gameState.state === 'TRANSITION') {
+                gameState.transitionTimer--;
+                let prog = 1 - (gameState.transitionTimer / 150); 
+
+                let isGameOver = gameState.transitionType === 'GAMEOVER';
+                let transColor = isGameOver ? '0, 0, 0' : '0, 0, 0';
+
+                ctx.fillStyle = `rgba(${transColor},${Math.min(1, prog * 1.5)})`;
+                ctx.fillRect(0, 0, WIDTH, HEIGHT);
+
+                let cx = gameState.sinkHole.x;
+                let cy = gameState.sinkHole.y;
+
+                for (let i = 0; i < 15; i++) {
+                    let ringT = (i / 15 + prog * 4) % 1; 
+                    let scale = Math.pow(ringT, 4) * 6; 
+                    let alpha = 1 - Math.abs(ringT - 0.5) * 2;
+
+                    ctx.save();
+                    ctx.translate(cx, cy); 
+                    ctx.scale(scale, scale);
+                    ctx.rotate(prog * Math.PI * 2 + ringT * Math.PI);
+                    ctx.translate(-cx, -cy);
+
+                    ctx.globalAlpha = Math.max(0, alpha);
+                    let cIndex = i % 4;
+                    if (isGameOver) {
+                        ctx.strokeStyle = i % 2 === 0 ? '#ff0000' : '#440000';
+                    } else {
+                        ctx.strokeStyle = `rgb(${currentPalette[cIndex][0]}, ${currentPalette[cIndex][1]}, ${currentPalette[cIndex][2]})`;
+                    }
+                    ctx.lineWidth = 4 / scale; 
+                    drawShapePath(ctx, boardShape, false);
+                    ctx.stroke();
+                    ctx.restore();
+                }
+
+                if (prog < 0.6 && gameState.sinkingBall) {
+                    let ballScale = 1 - (prog / 0.6);
+                    ctx.save();
+                    ctx.translate(cx, cy);
+                    ctx.scale(ballScale, ballScale);
+                    gameState.sinkingBall.draw(ctx);
+                    ctx.restore();
+                }
+
+                ctx.fillStyle = isGameOver ? '#ff0000' : '#fff';
+                ctx.font = '24px "Press Start 2P"';
+                ctx.textAlign = 'center';
+                ctx.globalAlpha = Math.min(1, prog * 2);
+                ctx.fillText(isGameOver ? "DIMENSION COLLAPSE" : "DIMENSION SHIFT", WIDTH/2, HEIGHT/2 - 20);
+                ctx.fillStyle = '#fff';
+                ctx.font = '10px "Press Start 2P"';
+                ctx.fillText(`SURVIVED: ${gameState.bounces} BOUNCES`, WIDTH/2, HEIGHT/2 + 20);
+                ctx.globalAlpha = 1.0;
+
+                if (gameState.transitionTimer <= 0) {
+                    gameState.state = 'PLAYING';
+                    if (isGameOver) restartGame();
                     else {
-                        const inter=Math.abs(p1Wave.amp*Math.cos(12*warp*nx-t+p1Wave.phase)*p2Wave.amp*Math.sin(12*warp*ny+t+p2Wave.phase)+Math.sin((nx*nx+ny*ny)*12-t)+Math.sin(Math.atan2(ny,nx)*4+getHyperbolicDistance(nx,ny)*10-t*2)*0.5);
-                        bgP=inter>0.8?cW2:inter>0.4?cI:inter>0.1?cW1:makeColor(30,0,20);
+                        gameState.bounces = 0;
+                        const uiWinding = document.getElementById('ui-winding');
+                        if (uiWinding) uiWinding.innerText = "0";
+                        nextDimension();
                     }
                 }
 
-                const distP1=Math.pow(nx-colts[0].x,2)+Math.pow(ny-colts[0].y,2);
-                const distP2=Math.pow(nx-colts[1].x,2)+Math.pow(ny-colts[1].y,2);
-                const isP1=distP1<0.002, isP2=distP2<0.002;
+                requestAnimationFrame(loop);
+                return; 
+            }
 
-                // Ghost prediction rings
-                const g2 = OracleHarmonic.getGhost('p2');
-                if (g2.confidence > 0.2) {
-                    const gDist = Math.pow(nx-g2.predictedDelta.x,2)+Math.pow(ny-g2.predictedDelta.y,2);
-                    if (gDist < 0.0008 && gDist > 0.0003) {
-                        buf[i] = makeColor(255, 100, 50); continue;
+            // === NORMAL PLAY: PHYSICS RESOLUTION ===
+            updateBoardRuliad();
+
+            const subSteps = 4;
+            const dt = 1 / subSteps;
+
+            for (let step = 0; step < subSteps; step++) {
+                // 1. Update ball positions and Wall Collisions
+                balls.forEach(b => {
+                    if (b.dead) return;
+                    b.update();
+                    if (b.isSinking) return;
+
+                    b.x += b.vx * dt;
+                    b.y += b.vy * dt;
+                    b.angle += Math.hypot(b.vx, b.vy) * 0.05 * dt;
+
+                    let hitWallThisFrame = false;
+                    let overlapOffset = {x: 0, y: 0};
+
+                    for(let i=0; i<boardShape.vertices.length; i++) {
+                        let A = boardShape.vertices[i];
+                        let B = boardShape.vertices[(i+1)%boardShape.vertices.length];
+
+                        let dx = B.x - A.x; let dy = B.y - A.y;
+                        let len2 = dx*dx + dy*dy;
+                        if(len2 === 0) continue;
+
+                        let tLine = ((b.x - A.x) * dx + (b.y - A.y) * dy) / len2;
+                        tLine = Math.max(0, Math.min(1, tLine)); 
+
+                        let closestX = A.x + tLine * dx;
+                        let closestY = A.y + tLine * dy;
+
+                        let distX = b.x - closestX;
+                        let distY = b.y - closestY;
+                        let dist = Math.hypot(distX, distY);
+
+                        if (dist < b.radius && dist > 0.01) {
+                            let nx = distX / dist; let ny = distY / dist;
+                            let overlap = b.radius - dist;
+                            overlapOffset.x += nx * overlap;
+                            overlapOffset.y += ny * overlap;
+
+                            let dot = b.vx * nx + b.vy * ny;
+                            if (dot < 0) {
+                                b.vx -= 2 * dot * nx;
+                                b.vy -= 2 * dot * ny;
+                                hitWallThisFrame = true;
+                            }
+                        }
+                    }
+
+                    b.x += overlapOffset.x;
+                    b.y += overlapOffset.y;
+                    // Emergency Pull-back
+                    let dCenter = Math.hypot(b.x - boardShape.cx, b.y - boardShape.cy);
+                    if (dCenter > boardShape.r + b.radius) {
+                        let pX = boardShape.cx - b.x, pY = boardShape.cy - b.y;
+                        let pLen = Math.hypot(pX, pY);
+                        b.x += (pX / pLen) * 5; b.y += (pY / pLen) * 5;
+                    }
+
+                    if (hitWallThisFrame && frameCount - b.lastBounce > 5) {
+                        b.lastBounce = frameCount;
+                        // ANY ball hitting the wall now triggers visual ripples and background color shifts!
+                        bgPaletteShift = (bgPaletteShift + 1) % 4;
+                        impactRipples.push({x: b.x, y: b.y, r: 0, colorShift: bgPaletteShift});
+
+                        gameState.bounces++;
+                        const uiWinding = document.getElementById('ui-winding');
+                        if(uiWinding) uiWinding.innerText = gameState.bounces;
+                    }
+                });
+
+                // 2. Ball-to-Ball Collisions
+                for (let i = 0; i < balls.length; i++) {
+                    for (let j = i + 1; j < balls.length; j++) {
+                        let b1 = balls[i]; let b2 = balls[j];
+                        if (b1.isSinking || b2.isSinking || b1.dead || b2.dead) continue;
+
+                        let dx = b2.x - b1.x; let dy = b2.y - b1.y;
+                        let dist = Math.hypot(dx, dy);
+                        let minDist = b1.radius + b2.radius;
+
+                        if (dist < minDist && dist > 0) {
+                            let overlap = minDist - dist;
+                            let nx = dx / dist; let ny = dy / dist;
+
+                            b1.x -= nx * overlap / 2; b1.y -= ny * overlap / 2;
+                            b2.x += nx * overlap / 2; b2.y += ny * overlap / 2;
+
+                            let kx = b1.vx - b2.vx; let ky = b1.vy - b2.vy;
+                            let p = (nx * kx + ny * ky); 
+
+                            if (p > 0) { 
+                                b1.vx -= p * nx; b1.vy -= p * ny;
+                                b2.vx += p * nx; b2.vy += p * ny;
+                            }
+                        }
                     }
                 }
 
-                if (visMode===0) {
-                    if (isP1){buf[i]=cP1;continue;} if(isP2){buf[i]=cP2;continue;}
-                    let drawn=false;
-                    for(let p of colts[0].hist) if(Math.pow(nx-p.x,2)+Math.pow(ny-p.y,2)<0.0005){buf[i]=cP1&0x77FFFFFF;drawn=true;break;} if(drawn)continue;
-                    for(let p of colts[1].hist) if(Math.pow(nx-p.x,2)+Math.pow(ny-p.y,2)<0.0005){buf[i]=cP2&0x77FFFFFF;drawn=true;break;} if(drawn)continue;
-                    buf[i]=bgP;
-                } else {
-                    const isS=(gy%4)<2;
-                    const sC=isS?cS1:cS2;
-                    const bgR=bgP&0xFF,bgG=(bgP>>8)&0xFF,bgB=(bgP>>16)&0xFF;
-                    const sR=sC&0xFF,sG=(sC>>8)&0xFF,sB=(sC>>16)&0xFF;
-                    if(isP1) buf[i]=isS?cS1:cNB; else if(isP2) buf[i]=!isS?cS2:cNB;
-                    else buf[i]=makeColor((bgR+sR)/2,(bgG+sG)/2,(bgB+sB)/2);
+                // 3. Pocket Sinking Logic
+                balls.forEach(b => {
+                    if (b.dead) return;
+                    if (b.isSinking) {
+                        let dx = b.targetPocket.x - b.x;
+                        let dy = b.targetPocket.y - b.y;
+                        let dist = Math.hypot(dx, dy);
+
+                        if (dist < POCKET_RADIUS * 0.5) {
+                            if (b.type === 'WHITE') {
+                                b.isSinking = false;
+                                b.x = boardShape.cx;
+                                b.y = boardShape.cy + 80;
+                                b.vx = 0; b.vy = 0;
+                            } else if (b.type === 'TARGET') {
+                                gameState.targetsSunk++;
+                                b.dead = true;
+                                b.isSinking = false;
+                                updateTargetHUD();
+                                if (gameState.targetsSunk >= 4) {
+                                    triggerTransition(b.targetPocket, 'NEXT', b); 
+                                }
+                            } else if (b.type === 'BLACK') {
+                                // 8-ball sunk — respawn at centre, don't end game
+                                b.isSinking = false;
+                                b.x = boardShape.cx;
+                                b.y = boardShape.cy;
+                                b.vx = (Math.random() - 0.5) * 2;
+                                b.vy = (Math.random() - 0.5) * 2;
+                            } else {
+                                triggerTransition(b.targetPocket, 'GAMEOVER', b); 
+                            }
+                        } else {
+                            b.vx = (dx / dist) * 15;
+                            b.vy = (dy / dist) * 15;
+                            b.x += b.vx * dt; b.y += b.vy * dt;
+                            b.angle += Math.hypot(b.vx, b.vy) * 0.05 * dt;
+                        }
+                    } else {
+                        for (let p of boardShape.pockets) {
+                            let dist = Math.hypot(p.x - b.x, p.y - b.y);
+
+                            let pullRadius = POCKET_RADIUS * 2.5; 
+                            if (dist < pullRadius && dist > POCKET_RADIUS * 1.5) {
+                                let gravity = 1.0 * (1 - dist / pullRadius) * dt; 
+                                b.vx += ((p.x - b.x) / dist) * gravity;
+                                b.vy += ((p.y - b.y) / dist) * gravity;
+                            }
+                            if (dist <= POCKET_RADIUS * 1.5) {
+                                b.isSinking = true;
+                                b.targetPocket = p;
+                                break;
+                            }
+                        }
+
+                        const caX = Math.floor(((b.x - boardRect.x) / boardRect.size) * B_CA_SIZE);
+                        const caY = Math.floor(((b.y - boardRect.y) / boardRect.size) * B_CA_SIZE);
+                        let injectionHeat = 120; 
+                        if (micEnabled && currentAudioLevel > 15) injectionHeat = 255; 
+                        if(caX >= 0 && caX < B_CA_SIZE && caY >= 0 && caY < B_CA_SIZE) {
+                            trailData[caY * B_CA_SIZE + caX] = injectionHeat;
+                            if (b.type === 'WHITE') trailData[caY * B_CA_SIZE + Math.max(0, caX-1)] = injectionHeat;
+                        }
+                    }
+                });
+            }
+
+            // Cleanup dead balls
+            balls = balls.filter(b => !b.dead);
+
+            // === DRAW FRAME ===
+            drawBoard();
+            balls.forEach(b => b.draw(ctx));
+
+            // DRAW CUE AIMING LINE
+            if (mouse.isDragging && gameState.state === 'PLAYING') {
+                let whiteBall = balls.find(b => b.type === 'WHITE');
+                if (whiteBall && !whiteBall.isSinking && !whiteBall.dead) {
+                    let dx = mouse.startX - mouse.x;
+                    let dy = mouse.startY - mouse.y;
+
+                    ctx.save();
+                    ctx.beginPath();
+                    ctx.moveTo(whiteBall.x, whiteBall.y);
+                    ctx.lineTo(whiteBall.x + dx, whiteBall.y + dy);
+                    ctx.strokeStyle = '#fff';
+                    ctx.lineWidth = 3;
+                    ctx.setLineDash([5, 5]);
+                    ctx.stroke();
+
+                    ctx.beginPath();
+                    ctx.arc(whiteBall.x + dx, whiteBall.y + dy, 5, 0, Math.PI * 2);
+                    ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+                    ctx.fill();
+                    ctx.restore();
                 }
             }
 
-            // Ghost oracle block counter in pixel HUD
-            const block = OracleHarmonic.blockHeight;
-            drawText('P1:'+p1Score.toString().padStart(2,'0'), 8, 8, cP1);
-            drawText('P2:'+p2Score.toString().padStart(2,'0'), Math.max(0,GRID_W-28), 8, cP2);
-            drawText('T:'+timeRemaining.toString().padStart(2,'0'), Math.floor(GRID_W/2)-8, 8, (timeRemaining<=10?cA:cH));
-            drawText('BLK:'+block, 8, 16, makeColor(0,120,80));
-            drawText('ONLINE:24MS', 8, Math.max(0,GRID_H-16), cO);
-            drawText('GEO:'+(geoMode===0?'HYPER':geoMode===1?'RECT':'MORPH'), 8, Math.max(0,GRID_H-24), cH);
-            drawText('MODE:'+(gameRule===0?'SINK':'SURV'), Math.max(0,GRID_W-46), Math.max(0,GRID_H-24), cH);
-            drawText('VIS:'+(visMode===0?'NORM':'ILLUS'), Math.max(0,GRID_W-42), Math.max(0,GRID_H-16), cH);
+            drawThickMunkerWhite();
+            drawPockets();
+            drawSnakesOnCanvas();
 
-            if (psychosisLevel > 0.1) {
-                drawText('PSYCHOSIS', Math.floor(GRID_W/2)-18, Math.max(0,GRID_H-16),
-                    makeColor(255, Math.floor(psychosisLevel*100), 0));
-            }
-
-            if (gameState==='GAMEOVER') {
-                for(let i=0;i<buf.length;i++) buf[i]=(buf[i]&0x44FFFFFF);
-                const wT=p1Score>p2Score?'P1 WINS!':p2Score>p1Score?'P2 WINS!':'DRAW!';
-                const wC=p1Score>p2Score?cP1:p2Score>p1Score?cP2:cH;
-                drawText(wT, Math.floor(GRID_W/2)-15, Math.floor(GRID_H/2)-10, wC);
-                drawText('CLICK TO REMATCH', Math.floor(GRID_W/2)-31, Math.floor(GRID_H/2)+5, cH);
-            }
-
-            offCtx.putImageData(imgData,0,0);
-            ctx.drawImage(offCanvas,0,0,canvas.width,canvas.height);
-            requestAnimationFrame(renderLoop);
+            requestAnimationFrame(loop);
         }
+
+
+        // ============================================================
+        // SNAKE SYSTEM (P1 keyboard/dpad, P2 AI)
+        // ============================================================
+        const SNAKE_STEP = 4;
+        const SNAKE_TICK = 7;
+        const SNAKE_SIZE = 3;
+        const SBALL_SIZE = 3;
+        const MAX_SNAKE_PTS = 10;
+
+        const DIR = { UP:{dx:0,dy:-1}, DOWN:{dx:0,dy:1}, LEFT:{dx:-1,dy:0}, RIGHT:{dx:1,dy:0} };
+
+        let snake1 = { segs:[], dir:DIR.RIGHT, nextDir:DIR.RIGHT, alive:true, points:0 };
+        let snake2 = { segs:[], dir:DIR.LEFT,  nextDir:DIR.LEFT,  alive:true, points:0 };
+        let snakeBalls = [];
+        let snakeWinner = null;
+        let snakeTick = 0;
+        let snakeWinTimer = 0;
+
+        function isInsideShape(px, py) {
+            // Point-in-polygon test for current board shape
+            const verts = boardShape.vertices;
+            if (!verts || verts.length < 3) return false;
+            let inside = false;
+            for (let i=0, j=verts.length-1; i<verts.length; j=i++) {
+                const xi=verts[i].x, yi=verts[i].y;
+                const xj=verts[j].x, yj=verts[j].y;
+                if (((yi>py)!==(yj>py)) && (px < (xj-xi)*(py-yi)/(yj-yi)+xi)) inside = !inside;
+            }
+            return inside;
+        }
+
+        function snakeSpawnBall() {
+            const cx = boardShape.cx, cy = boardShape.cy, r = boardShape.r * 0.8;
+            for (let attempt=0; attempt<100; attempt++) {
+                const angle = Math.random()*Math.PI*2;
+                const dist  = Math.random()*r;
+                const px = cx + Math.cos(angle)*dist;
+                const py = cy + Math.sin(angle)*dist;
+                if (!isInsideShape(px,py)) continue;
+                const onSn = [...snake1.segs,...snake2.segs].some(s=>Math.hypot(s.x-px,s.y-py)<8);
+                if (onSn) continue;
+                snakeBalls.push({ x:px, y:py, pulse:Math.random()*Math.PI*2 });
+                return;
+            }
+        }
+
+        function initSnakes() {
+            const cx = boardShape.cx, cy = boardShape.cy;
+            snake1.segs=[]; snake1.dir=DIR.RIGHT; snake1.nextDir=DIR.RIGHT; snake1.alive=true; snake1.points=0;
+            snake2.segs=[]; snake2.dir=DIR.LEFT;  snake2.nextDir=DIR.LEFT;  snake2.alive=true; snake2.points=0;
+            for (let i=5;i>=0;i--) snake1.segs.push({x:cx-i*SNAKE_STEP, y:cy-10});
+            for (let i=5;i>=0;i--) snake2.segs.push({x:cx+i*SNAKE_STEP, y:cy+10});
+            snakeBalls=[]; snakeWinner=null; snakeWinTimer=0;
+            snakeSpawnBall(); snakeSpawnBall();
+            updateSnakeHUD();
+        }
+
+        function updateSnakeHUD() {
+            const p1El=document.getElementById('sn-p1');
+            const p2El=document.getElementById('sn-p2');
+            const wEl=document.getElementById('sn-winner');
+            if(p1El) p1El.innerText = 'P1 SNAKE: '+snake1.points;
+            if(p2El) p2El.innerText = 'P2 SNAKE: '+snake2.points;
+            if(wEl) {
+                if(snakeWinner) {
+                    wEl.style.display='block';
+                    wEl.style.color = snakeWinner==='p1'?'#FFdd00':'#ff00ff';
+                    wEl.innerText = snakeWinner==='p1'?'P1 WINS SNAKE!':'P2 WINS SNAKE!';
+                } else { wEl.style.display='none'; }
+            }
+        }
+
+        function aiSnake2() {
+            if (!snake2.alive) return;
+            const head = snake2.segs[snake2.segs.length-1];
+            const cur  = snake2.dir;
+            const dirs = [DIR.UP,DIR.DOWN,DIR.LEFT,DIR.RIGHT];
+            const safe = dirs.filter(d=>!(d.dx===-cur.dx&&d.dy===-cur.dy));
+            let best=null, bestScore=-Infinity;
+            for (const d of safe) {
+                const nx=head.x+d.dx*SNAKE_STEP, ny=head.y+d.dy*SNAKE_STEP;
+                if (!isInsideShape(nx,ny)) continue;
+                const hitSelf=snake2.segs.some(s=>Math.hypot(s.x-nx,s.y-ny)<SNAKE_SIZE*2);
+                if (hitSelf) continue;
+                const hitP1=snake1.segs.some(s=>Math.hypot(s.x-nx,s.y-ny)<SNAKE_SIZE*2);
+                let ballScore=0;
+                if (snakeBalls.length>0) {
+                    const nearest=snakeBalls.reduce((a,b)=>Math.hypot(b.x-nx,b.y-ny)<Math.hypot(a.x-nx,a.y-ny)?b:a);
+                    ballScore=300/(Math.hypot(nearest.x-nx,nearest.y-ny)+1);
+                }
+                const cont=(d.dx===cur.dx&&d.dy===cur.dy)?10:0;
+                const score=ballScore+cont-(hitP1?60:0);
+                if (score>bestScore){bestScore=score;best=d;}
+            }
+            if (best) snake2.nextDir=best;
+        }
+
+        function stepSnakes() {
+            if (snakeWinner) {
+                snakeWinTimer++;
+                if (snakeWinTimer>120) { initSnakes(); }
+                return;
+            }
+            aiSnake2();
+            [snake1,snake2].forEach((sn,idx)=>{
+                if (!sn.alive) return;
+                sn.dir=sn.nextDir;
+                const head=sn.segs[sn.segs.length-1];
+                const nx=head.x+sn.dir.dx*SNAKE_STEP;
+                const ny=head.y+sn.dir.dy*SNAKE_STEP;
+                if (!isInsideShape(nx,ny)){sn.alive=false;snakeWinner=idx===0?'p2':'p1';updateSnakeHUD();return;}
+                const hitSelf=sn.segs.some(s=>Math.hypot(s.x-nx,s.y-ny)<SNAKE_SIZE);
+                if (hitSelf){sn.alive=false;snakeWinner=idx===0?'p2':'p1';updateSnakeHUD();return;}
+                const other=idx===0?snake2:snake1;
+                const hitOther=other.segs.some(s=>Math.hypot(s.x-nx,s.y-ny)<SNAKE_SIZE*2);
+                if (hitOther){sn.alive=false;snakeWinner=idx===0?'p2':'p1';updateSnakeHUD();return;}
+                sn.segs.push({x:nx,y:ny});
+                let ate=false;
+                snakeBalls=snakeBalls.filter(b=>{
+                    if (Math.hypot(b.x-nx,b.y-ny)<SNAKE_SIZE+SBALL_SIZE+3){
+                        sn.points++; ate=true;
+                        if(sn.points>=MAX_SNAKE_PTS){snakeWinner=idx===0?'p1':'p2';}
+                        return false;
+                    }
+                    return true;
+                });
+                if (ate){snakeSpawnBall();}
+                else {sn.segs.shift();}
+                updateSnakeHUD();
+            });
+        }
+
+        function drawSnakesOnCanvas() {
+            // Draws snake directly to the main ctx on top of everything
+            // Yellow pulsing collectible balls
+            snakeBalls.forEach(b=>{
+                b.pulse+=0.12;
+                const pulse=Math.abs(Math.sin(b.pulse));
+                const r=SBALL_SIZE+pulse*2;
+                ctx.save();
+                ctx.shadowBlur=8+pulse*6; ctx.shadowColor=`rgba(255,220,0,${0.6+pulse*0.4})`;
+                ctx.fillStyle=`rgba(255,${180+pulse*75},0,0.95)`;
+                ctx.beginPath(); ctx.arc(b.x,b.y,r,0,Math.PI*2); ctx.fill();
+                ctx.restore();
+            });
+
+            // Draw snakes
+            const snakeDefs=[
+                {sn:snake1, headCol:'#FFdd00', bodyCol:'#886600'},
+                {sn:snake2, headCol:'#ff00ff', bodyCol:'#660066'}
+            ];
+            snakeDefs.forEach(({sn,headCol,bodyCol})=>{
+                if (sn.segs.length<2) return;
+                // Body trail
+                sn.segs.forEach((seg,i)=>{
+                    const isHead=i===sn.segs.length-1;
+                    const r=isHead?SNAKE_SIZE+2:SNAKE_SIZE;
+                    ctx.save();
+                    ctx.fillStyle=isHead?headCol:bodyCol;
+                    if(isHead){ctx.shadowBlur=10;ctx.shadowColor=headCol;}
+                    ctx.beginPath();ctx.arc(seg.x,seg.y,r,0,Math.PI*2);ctx.fill();
+                    ctx.restore();
+                });
+            });
+
+            // Dead flash
+            if (!snake1.alive){ctx.save();ctx.fillStyle='rgba(255,200,0,0.15)';ctx.fillRect(0,0,WIDTH,HEIGHT);ctx.restore();}
+            if (!snake2.alive){ctx.save();ctx.fillStyle='rgba(255,0,255,0.15)';ctx.fillRect(0,0,WIDTH,HEIGHT);ctx.restore();}
+        }
+
+        // Snake keyboard input
+        window.addEventListener('keydown', e=>{
+            const cur=snake1.dir;
+            if((e.key==='ArrowUp'  ||e.key==='w')&&cur!==DIR.DOWN)  snake1.nextDir=DIR.UP;
+            if((e.key==='ArrowDown'||e.key==='s')&&cur!==DIR.UP)    snake1.nextDir=DIR.DOWN;
+            if((e.key==='ArrowLeft'||e.key==='a')&&cur!==DIR.RIGHT) snake1.nextDir=DIR.LEFT;
+            if((e.key==='ArrowRight'||e.key==='d')&&cur!==DIR.LEFT) snake1.nextDir=DIR.RIGHT;
+        });
+
+        // D-pad
+        function dpadBind(id, dir, opposite) {
+            const el=document.getElementById(id);
+            if(!el) return;
+            const fn=()=>{ if(snake1.dir!==opposite) snake1.nextDir=dir; };
+            el.addEventListener('touchstart',e=>{e.preventDefault();fn();},{passive:false});
+            el.addEventListener('mousedown',fn);
+        }
+        dpadBind('dp-up',   DIR.UP,    DIR.DOWN);
+        dpadBind('dp-down', DIR.DOWN,  DIR.UP);
+        dpadBind('dp-left', DIR.LEFT,  DIR.RIGHT);
+        dpadBind('dp-right',DIR.RIGHT, DIR.LEFT);
+
+
+        generateGeometry(); 
+        resize();
+        initBalls();
+        loop();
     </script>
 </body>
 </html>
