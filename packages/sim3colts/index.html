@@ -1,666 +1,893 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>RULIARDS // COMMAND</title>
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Mono:wght@300;400;600&display=swap');
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Sim3Colts // Holographic Online Arena</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            background-color: #000;
+            margin: 0;
+            overflow: hidden;
+            user-select: none;
+            touch-action: none;
+        }
+        canvas {
+            image-rendering: pixelated;
+            width: 100vw;
+            height: 100vh;
+            display: block;
+        }
+        #boot-seq {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: rgba(0,0,0,0.92);
+            color: #00ffcc;
+            font-family: monospace;
+            cursor: pointer;
+            z-index: 50;
+            transition: opacity 1s;
+        }
+        #boot-seq h1 { font-size: clamp(1.2rem, 5vw, 2rem); letter-spacing: 0.5em; text-shadow: 0 0 10px #00ffcc; }
+        #boot-seq p  { font-size: clamp(0.55rem, 2vw, 0.8rem); margin-top: 12px; text-align: center; padding: 0 20px; }
+        .pulse { animation: p 1.5s infinite; }
+        @keyframes p { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
 
-:root {
-  --bg:       #080808;
-  --surface:  #0e0e0e;
-  --border:   #1e1e1e;
-  --p1:       #00ffcc;
-  --p2:       #ff3366;
-  --neutral:  #ffcc00;
-  --sim3:     #00aaff;
-  --ruliad:   #aa44ff;
-  --dim:      rgba(255,255,255,0.12);
-  --text:     #c8c8c8;
-}
+        /* D-PAD for P1 snake on mobile */
+        #dpad {
+            position: absolute;
+            bottom: max(90px, env(safe-area-inset-bottom, 0px) + 90px);
+            left: 50%;
+            transform: translateX(-50%);
+            display: grid;
+            grid-template-columns: 44px 44px 44px;
+            grid-template-rows: 44px 44px 44px;
+            gap: 4px;
+            z-index: 20;
+            opacity: 0.55;
+        }
+        .dpad-btn {
+            background: rgba(0,255,204,0.15);
+            border: 1px solid rgba(0,255,204,0.4);
+            color: #00ffcc;
+            font-size: 1.1rem;
+            display: flex; align-items: center; justify-content: center;
+            border-radius: 4px;
+            cursor: pointer;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .dpad-btn:active { background: rgba(0,255,204,0.35); }
+        .dpad-empty { background: transparent; border: none; }
 
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-html, body {
-  height: 100%;
-  background: var(--bg);
-  color: var(--text);
-  font-family: 'IBM Plex Mono', monospace;
-  overflow: hidden;
-}
-
-/* GRAIN */
-body::after {
-  content: '';
-  position: fixed;
-  inset: 0;
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
-  pointer-events: none;
-  z-index: 9999;
-  opacity: 0.6;
-}
-
-/* LAYOUT */
-#app {
-  display: grid;
-  grid-template-rows: 48px 1fr 180px;
-  grid-template-columns: 1fr 1fr 280px;
-  height: 100vh;
-  gap: 1px;
-  background: var(--border);
-}
-
-/* HEADER */
-#header {
-  grid-column: 1 / -1;
-  background: var(--surface);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 20px;
-  border-bottom: 1px solid var(--border);
-}
-
-#header h1 {
-  font-family: 'Bebas Neue', sans-serif;
-  font-size: 1.5rem;
-  letter-spacing: 6px;
-  color: #fff;
-}
-
-.status-row {
-  display: flex;
-  gap: 16px;
-  align-items: center;
-}
-
-.status-dot {
-  width: 6px; height: 6px;
-  border-radius: 50%;
-  background: var(--border);
-  display: inline-block;
-  margin-right: 5px;
-}
-.status-dot.on { background: var(--p1); box-shadow: 0 0 6px var(--p1); animation: blink 2s infinite; }
-.status-dot.warn { background: var(--neutral); box-shadow: 0 0 6px var(--neutral); }
-
-@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
-
-.status-label {
-  font-size: 0.55rem;
-  letter-spacing: 2px;
-  text-transform: uppercase;
-  color: var(--dim);
-}
-.status-label span { color: var(--text); }
-
-/* GAME FRAMES */
-.game-frame-wrap {
-  background: #000;
-  position: relative;
-  overflow: hidden;
-}
-
-.game-frame-wrap iframe {
-  width: 100%;
-  height: 100%;
-  border: none;
-  display: block;
-}
-
-.game-label {
-  position: absolute;
-  top: 8px;
-  left: 10px;
-  font-family: 'Bebas Neue', sans-serif;
-  font-size: 0.75rem;
-  letter-spacing: 4px;
-  z-index: 10;
-  pointer-events: none;
-}
-
-.game-label.sim3   { color: var(--sim3); text-shadow: 0 0 8px var(--sim3); }
-.game-label.ruliad { color: var(--ruliad); text-shadow: 0 0 8px var(--ruliad); }
-
-.cross-flash {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  opacity: 0;
-  z-index: 5;
-  transition: opacity 0.1s;
-}
-.cross-flash.sim3-flash   { background: radial-gradient(ellipse, rgba(0,170,255,0.15) 0%, transparent 70%); }
-.cross-flash.ruliad-flash { background: radial-gradient(ellipse, rgba(170,68,255,0.15) 0%, transparent 70%); }
-
-/* RIGHT PANEL */
-#right-panel {
-  grid-row: 2 / 4;
-  background: var(--surface);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-.panel-section {
-  border-bottom: 1px solid var(--border);
-  padding: 12px;
-  flex-shrink: 0;
-}
-
-.panel-title {
-  font-family: 'Bebas Neue', sans-serif;
-  font-size: 0.8rem;
-  letter-spacing: 4px;
-  margin-bottom: 8px;
-  color: #fff;
-}
-
-/* AUDIO METERS */
-.meter-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 5px;
-}
-.meter-key {
-  font-size: 0.5rem;
-  letter-spacing: 1px;
-  width: 52px;
-  color: var(--dim);
-  flex-shrink: 0;
-}
-.meter-track {
-  flex: 1;
-  height: 4px;
-  background: rgba(255,255,255,0.06);
-  border-radius: 1px;
-  overflow: hidden;
-}
-.meter-fill {
-  height: 100%;
-  border-radius: 1px;
-  width: 0%;
-  transition: width 0.08s linear;
-}
-.meter-fill.amp    { background: var(--p1); box-shadow: 0 0 4px var(--p1); }
-.meter-fill.bass   { background: var(--p2); }
-.meter-fill.mid    { background: var(--neutral); }
-.meter-fill.treble { background: var(--sim3); }
-.meter-val {
-  font-size: 0.48rem;
-  width: 26px;
-  text-align: right;
-  color: var(--dim);
-}
-
-/* MIC BUTTON */
-#mic-btn {
-  width: 100%;
-  font-family: 'IBM Plex Mono', monospace;
-  font-size: 0.55rem;
-  letter-spacing: 2px;
-  padding: 7px;
-  border: 1px solid var(--p1);
-  background: transparent;
-  color: var(--p1);
-  cursor: pointer;
-  text-transform: uppercase;
-  transition: all 0.2s;
-  margin-top: 8px;
-}
-#mic-btn:hover    { background: rgba(0,255,204,0.08); }
-#mic-btn.active   { background: rgba(0,255,204,0.12); animation: pulse-border 1.2s infinite; }
-#mic-btn.sim-mode { border-color: var(--neutral); color: var(--neutral); }
-@keyframes pulse-border {
-  0%,100% { box-shadow: 0 0 0 0 rgba(0,255,204,0.3); }
-  50%      { box-shadow: 0 0 0 4px rgba(0,255,204,0); }
-}
-
-/* LEADERBOARD */
-.lb-row {
-  display: flex;
-  justify-content: space-between;
-  font-size: 0.52rem;
-  letter-spacing: 1px;
-  padding: 3px 0;
-  border-bottom: 1px solid rgba(255,255,255,0.04);
-}
-.lb-row .lb-player { color: #fff; }
-.lb-row .lb-game   { color: var(--dim); font-size: 0.44rem; }
-.lb-row .lb-score  { color: var(--neutral); }
-
-/* CHAIN LOG */
-#chain-log {
-  flex: 1;
-  overflow-y: auto;
-  padding: 8px 12px;
-  font-size: 0.48rem;
-  letter-spacing: 0.5px;
-  line-height: 1.9;
-}
-#chain-log::-webkit-scrollbar { width: 2px; }
-#chain-log::-webkit-scrollbar-thumb { background: var(--border); }
-
-.chain-entry {
-  display: flex;
-  gap: 6px;
-  padding: 1px 0;
-  border-left: 2px solid transparent;
-  padding-left: 5px;
-  animation: fadeIn 0.3s ease;
-}
-@keyframes fadeIn { from { opacity:0; transform: translateX(-4px); } to { opacity:1; transform:none; } }
-
-.chain-entry.sim3   { border-left-color: var(--sim3); }
-.chain-entry.ruliad { border-left-color: var(--ruliad); }
-.chain-entry.cross  { border-left-color: var(--neutral); }
-.chain-entry.p2     { border-left-color: var(--p2); }
-.chain-entry.global { border-left-color: #fff; }
-
-.chain-block { color: rgba(255,255,255,0.3); flex-shrink:0; }
-.chain-game  { flex-shrink:0; }
-.chain-game.sim3   { color: var(--sim3); }
-.chain-game.ruliad { color: var(--ruliad); }
-.chain-game.cross  { color: var(--neutral); }
-.chain-type  { color: #fff; flex-shrink:0; }
-.chain-who   { color: var(--dim); }
-
-/* BOTTOM BAR */
-#bottom-bar {
-  grid-column: 1 / 3;
-  background: var(--surface);
-  display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
-  gap: 1px;
-  background: var(--border);
-}
-
-.bottom-cell {
-  background: var(--surface);
-  padding: 12px 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.bottom-cell-title {
-  font-family: 'Bebas Neue', sans-serif;
-  font-size: 0.7rem;
-  letter-spacing: 3px;
-  color: #fff;
-}
-
-/* PROVENANCE DISPLAY */
-.prov-row {
-  display: flex;
-  justify-content: space-between;
-  font-size: 0.5rem;
-  letter-spacing: 1px;
-  color: var(--dim);
-  padding: 2px 0;
-}
-.prov-row .prov-val { color: var(--p1); }
-.prov-row .prov-val.p2 { color: var(--p2); }
-.prov-row .prov-val.neutral { color: var(--neutral); }
-
-/* REPLAY BUTTON */
-.replay-btn {
-  font-family: 'IBM Plex Mono', monospace;
-  font-size: 0.48rem;
-  letter-spacing: 1px;
-  padding: 4px 10px;
-  border: 1px solid var(--border);
-  background: transparent;
-  color: var(--dim);
-  cursor: pointer;
-  text-transform: uppercase;
-  transition: all 0.15s;
-  align-self: flex-start;
-}
-.replay-btn:hover { border-color: var(--neutral); color: var(--neutral); }
-
-/* WAVEFORM */
-#waveform { width:100%; height:36px; }
-
-/* CROSS-GAME EVENT TICKER */
-#cross-ticker {
-  font-size: 0.5rem;
-  letter-spacing: 1px;
-  color: var(--neutral);
-  min-height: 14px;
-  overflow: hidden;
-  white-space: nowrap;
-}
-.tick-msg { animation: tickIn 0.2s ease; }
-@keyframes tickIn { from{opacity:0;transform:translateY(4px)} to{opacity:1;transform:none} }
-</style>
+        /* Mode toggle buttons */
+        #mode-btns {
+            position: absolute;
+            bottom: max(90px, env(safe-area-inset-bottom, 0px) + 90px);
+            right: 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            z-index: 20;
+        }
+        .mode-btn {
+            font-family: monospace;
+            font-size: 0.5rem;
+            letter-spacing: 1px;
+            padding: 5px 8px;
+            border: 1px solid rgba(170,255,170,0.4);
+            background: rgba(0,0,0,0.6);
+            color: #aaffaa;
+            cursor: pointer;
+            text-transform: uppercase;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .mode-btn:active { background: rgba(170,255,170,0.2); }
+    </style>
 </head>
 <body>
-<div id="app">
 
-  <!-- HEADER -->
-  <div id="header">
-    <div>
-      <h1>RULIARDS // COMMAND</h1>
-    </div>
-    <div class="status-row">
-      <div><span class="status-dot" id="dot-oracle"></span><span class="status-label">ORACLE <span id="stat-chain">0</span> BLK</span></div>
-      <div><span class="status-dot" id="dot-mic"></span><span class="status-label">HARMONIC <span id="stat-mode">OFFLINE</span></span></div>
-      <div><span class="status-dot warn"></span><span class="status-label">P1 <span>ACTIVE</span></span></div>
-      <div><span class="status-dot" id="dot-p2"></span><span class="status-label">P2 <span id="stat-p2">WAITING</span></span></div>
-      <div><span class="status-dot warn"></span><span class="status-label">TABS <span id="stat-tabs">1</span></span></div>
-    </div>
-  </div>
-
-  <!-- SIM3COLTS FRAME -->
-  <div class="game-frame-wrap" id="wrap-sim3">
-    <div class="game-label sim3">SIM3COLTS</div>
-    <div class="cross-flash sim3-flash" id="flash-sim3"></div>
-    <iframe id="frame-sim3" src="sim3colts/index.html" allow="microphone"></iframe>
-  </div>
-
-  <!-- RETRO RULIAD FRAME -->
-  <div class="game-frame-wrap" id="wrap-ruliad">
-    <div class="game-label ruliad">RETRO RULIAD</div>
-    <div class="cross-flash ruliad-flash" id="flash-ruliad"></div>
-    <iframe id="frame-ruliad" src="retro-ruliad/index.html" allow="microphone"></iframe>
-  </div>
-
-  <!-- RIGHT PANEL -->
-  <div id="right-panel">
-
-    <!-- AUDIO -->
-    <div class="panel-section">
-      <div class="panel-title">HARMONIC SUNRISE</div>
-      <div class="meter-row"><span class="meter-key">AMPLITUDE</span><div class="meter-track"><div class="meter-fill amp" id="m-amp"></div></div><span class="meter-val" id="v-amp">0%</span></div>
-      <div class="meter-row"><span class="meter-key">BASS</span><div class="meter-track"><div class="meter-fill bass" id="m-bass"></div></div><span class="meter-val" id="v-bass">0%</span></div>
-      <div class="meter-row"><span class="meter-key">MID</span><div class="meter-track"><div class="meter-fill mid" id="m-mid"></div></div><span class="meter-val" id="v-mid">0%</span></div>
-      <div class="meter-row"><span class="meter-key">TREBLE</span><div class="meter-track"><div class="meter-fill treble" id="m-treble"></div></div><span class="meter-val" id="v-treble">0%</span></div>
-      <canvas id="waveform"></canvas>
-      <button id="mic-btn" onclick="activateAudio()">[ CLICK TO ACTIVATE MIC ]</button>
-    </div>
-
-    <!-- LEADERBOARD -->
-    <div class="panel-section">
-      <div class="panel-title">PROVENANCE BOARD</div>
-      <div id="leaderboard-rows">
-        <div class="lb-row"><span class="lb-player">—</span><span class="lb-game">WAITING</span><span class="lb-score">0</span></div>
-      </div>
-    </div>
-
-    <!-- CHAIN LOG -->
-    <div class="panel-title" style="padding:8px 12px 0; flex-shrink:0">ORACLE CHAIN</div>
-    <div id="chain-log"></div>
-
-  </div>
-
-  <!-- BOTTOM BAR -->
-  <div id="bottom-bar">
-
-    <!-- CROSS-GAME EVENTS -->
-    <div class="bottom-cell">
-      <div class="bottom-cell-title">CROSS-GAME CAUSALITY</div>
-      <div id="cross-ticker">WAITING FOR EVENTS...</div>
-      <div class="prov-row"><span>SIM3 → RULIAD</span><span class="prov-val" id="prov-s2r">0 events</span></div>
-      <div class="prov-row"><span>RULIAD → SIM3</span><span class="prov-val" id="prov-r2s">0 events</span></div>
-    </div>
-
-    <!-- FIRST EVENTS PROVENANCE -->
-    <div class="bottom-cell">
-      <div class="bottom-cell-title">WHO WAS FIRST</div>
-      <div class="prov-row"><span>FIRST POCKET</span><span class="prov-val" id="first-pocket">—</span></div>
-      <div class="prov-row"><span>FIRST P2 SHOT</span><span class="prov-val p2" id="first-p2">—</span></div>
-      <div class="prov-row"><span>FIRST DIM SHIFT</span><span class="prov-val neutral" id="first-dim">—</span></div>
-      <div class="prov-row"><span>FIRST TELEPORT</span><span class="prov-val" id="first-tele">—</span></div>
-    </div>
-
-    <!-- GHOST STATE -->
-    <div class="bottom-cell">
-      <div class="bottom-cell-title">GHOST STATE</div>
-      <div class="prov-row"><span>P1 CONFIDENCE</span><span class="prov-val" id="ghost-p1-conf">0%</span></div>
-      <div class="prov-row"><span>P2 CONFIDENCE</span><span class="prov-val p2" id="ghost-p2-conf">0%</span></div>
-      <div class="prov-row"><span>P2 LAST GAME</span><span class="prov-val neutral" id="ghost-p2-game">—</span></div>
-      <div class="prov-row"><span>BLOCK HEIGHT</span><span class="prov-val" id="ghost-block">0</span></div>
-      <button class="replay-btn" onclick="requestSnapshot()">REQUEST SNAPSHOT</button>
-    </div>
-
-  </div>
-
+<div id="boot-seq" id="boot-seq">
+    <h1>SIM3COLTS</h1>
+    <p style="color:#ff00aa; margin-top:6px; font-size:0.65rem; letter-spacing:2px">HOLOGRAPHIC ONLINE ARENA</p>
+    <p class="pulse" style="margin-top:18px">CONNECTING TO ONLINE ARENA...</p>
+    <p style="font-size: 0.65rem; color: #ff00aa; margin-top: 16px;">[ CLICK / TAP TO ENGAGE AUDIO SENSORS ]</p>
+    <p style="font-size:0.55rem; color:rgba(0,255,204,0.5); margin-top:10px">ARROW KEYS or D-PAD = P1 SNAKE</p>
 </div>
 
-<script src="../oracle-harmonic/oracle-harmonic.js"></script>
+<canvas id="sim-canvas"></canvas>
+
+<!-- D-PAD -->
+<div id="dpad">
+    <div class="dpad-empty"></div>
+    <div class="dpad-btn" id="btn-up">▲</div>
+    <div class="dpad-empty"></div>
+    <div class="dpad-btn" id="btn-left">◀</div>
+    <div class="dpad-empty"></div>
+    <div class="dpad-btn" id="btn-right">▶</div>
+    <div class="dpad-empty"></div>
+    <div class="dpad-btn" id="btn-down">▼</div>
+    <div class="dpad-empty"></div>
+</div>
+
+<!-- Mode toggle buttons -->
+<div id="mode-btns">
+    <button class="mode-btn" id="btn-geo">GEO</button>
+    <button class="mode-btn" id="btn-rule">MODE</button>
+    <button class="mode-btn" id="btn-vis">VIS</button>
+</div>
+
 <script>
-
 // ============================================================
-// DASHBOARD — RULIARDS COMMAND
+// SIM3COLTS v2 — HOLOGRAPHIC ONLINE ARENA
+// Original pixel engine + Snake game + Fixed HUD + Pocket indicators
+// First to 3 sinks wins (SINK) | Survive longest (SURV)
 // ============================================================
 
-const instanceId = OracleHarmonic.init('dashboard', null);
-let audioStarted = false;
+const TARGET_PIXELS   = 25600;
+const BOUNDARY_RADIUS = 0.85;
+const MATCH_DURATION  = 90;
+const WINS_TO_MATCH   = 3; // first to 3 sinks wins
 
-let s2rCount = 0, r2sCount = 0;
-let firstPocket = null, firstP2 = null, firstDim = null, firstTele = null;
+const canvas    = document.getElementById('sim-canvas');
+const ctx       = canvas.getContext('2d');
+const offCanvas = document.createElement('canvas');
+const offCtx    = offCanvas.getContext('2d');
 
-// Waveform
-const wfCanvas = document.getElementById('waveform');
-const wfCtx = wfCanvas.getContext('2d');
-wfCanvas.width = wfCanvas.offsetWidth * devicePixelRatio || 256;
-wfCanvas.height = 36 * devicePixelRatio || 36;
-let wfPhase = 0;
+let GRID_W = 100, GRID_H = 100;
+let imgData, buf;
+
+// Safe bottom margin for HUD (accounts for browser chrome)
+const SAFE_BOTTOM = 80; // px in grid units — computed below
+let GRID_SAFE_BOTTOM = 10; // updated on resize
+
+function resize() {
+    const w = Math.max(1, window.innerWidth  || 800);
+    const h = Math.max(1, window.innerHeight || 600);
+    canvas.width = w; canvas.height = h;
+    ctx.imageSmoothingEnabled = false;
+    const aspect = w / h;
+    GRID_H = Math.max(1, Math.floor(Math.sqrt(TARGET_PIXELS / aspect)));
+    GRID_W = Math.max(1, Math.floor(GRID_H * aspect));
+    offCanvas.width  = GRID_W;
+    offCanvas.height = GRID_H;
+    imgData = offCtx.createImageData(GRID_W, GRID_H);
+    buf     = new Uint32Array(imgData.data.buffer);
+    // Translate safe-area into grid pixels
+    GRID_SAFE_BOTTOM = Math.ceil((SAFE_BOTTOM / h) * GRID_H);
+}
+window.addEventListener('resize', resize);
+resize();
+
+// ---- GAME STATE ----
+let gameState     = 'BOOT';
+let geoMode       = 2; // 0=HYPER 1=RECT 2=MORPH
+let gameRule      = 0; // 0=SINK 1=SURV
+let visMode       = 0;
+let globalTime    = 0;
+let matchStartTime = 0;
+let timeRemaining = MATCH_DURATION;
+
+let p1Sinks = 0, p2Sinks = 0;   // first to WINS_TO_MATCH wins
+let p1Wins  = 0, p2Wins  = 0;   // match wins
+
+let p1Wave = { amp: 0, phase: 0, freq: 0.03 };
+let p2Wave = { amp: 0, phase: 0, freq: 0.05 };
+let bassLevel = 0, trebleLevel = 0;
+
+// Colts (the billiard balls)
+let colts = [];
+function makeColts() {
+    colts = [
+        { x: -0.2, y:  0.2, vx: 0, vy: 0, hist: [] },
+        { x:  0.2, y: -0.2, vx: 0, vy: 0, hist: [] }
+    ];
+}
 
 // ---- AUDIO ----
-async function activateAudio() {
-  if (audioStarted) return;
-  audioStarted = true;
-  const btn = document.getElementById('mic-btn');
-  btn.textContent = '[ INITIALISING... ]';
+let audioCtx, analyser, dataArray;
 
-  const mode = await OracleHarmonic.startAudio();
-  if (mode === 'mic') {
-    btn.textContent = '[ MIC ACTIVE ]';
-    btn.classList.add('active');
-    document.getElementById('dot-mic').classList.add('on');
-    document.getElementById('stat-mode').textContent = 'MIC';
-  } else {
-    btn.textContent = '[ SIMULATION MODE ]';
-    btn.classList.add('sim-mode');
-    document.getElementById('dot-mic').classList.add('on');
-    document.getElementById('stat-mode').textContent = 'SIM';
-  }
+async function initAudio() {
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        audioCtx  = new (window.AudioContext || window.webkitAudioContext)();
+        analyser  = audioCtx.createAnalyser();
+        const src = audioCtx.createMediaStreamSource(stream);
+        src.connect(analyser);
+        analyser.fftSize = 256;
+        dataArray = new Uint8Array(analyser.frequencyBinCount);
+        bootDone();
+    } catch(err) {
+        // No mic — still run
+        bootDone();
+    }
 }
 
-// ---- P2 TRIGGER ----
-OracleHarmonic.onP2Trigger((audioState, evt) => {
-  document.getElementById('dot-p2').classList.add('on');
-  document.getElementById('stat-p2').textContent = 'FIRING';
-  flashFrame('sim3');
-  flashFrame('ruliad');
-  setTimeout(() => {
-    document.getElementById('stat-p2').textContent = 'READY';
-  }, 400);
-});
-
-// ---- CHAIN EVENTS ----
-OracleHarmonic.onEvent((evt) => {
-  appendChainEntry(evt);
-  updateProvenance(evt);
-  updateFirsts(evt);
-  document.getElementById('stat-chain').textContent = OracleHarmonic.blockHeight;
-  document.getElementById('dot-oracle').classList.add('on');
-});
-
-// ---- CROSS-GAME ----
-OracleHarmonic.onCrossGame((evt) => {
-  const msg = `${evt.sourceGameId?.toUpperCase() || '?'} → ${evt.gameId?.toUpperCase() || '?'} : ${evt.type}`;
-  showCrossTick(msg);
-  if (evt.sourceGameId === 'sim3colts') {
-    s2rCount++;
-    document.getElementById('prov-s2r').textContent = s2rCount + ' events';
-    flashFrame('ruliad');
-  } else if (evt.sourceGameId === 'retro-ruliad') {
-    r2sCount++;
-    document.getElementById('prov-r2s').textContent = r2sCount + ' events';
-    flashFrame('sim3');
-  }
-});
-
-// ---- LEADERBOARD ----
-OracleHarmonic.onLeaderboard((board) => {
-  const el = document.getElementById('leaderboard-rows');
-  el.innerHTML = '';
-  board.slice(0, 6).forEach((entry, i) => {
-    const row = document.createElement('div');
-    row.className = 'lb-row';
-    const gameColor = entry.gameId === 'sim3colts' ? 'var(--sim3)' : 'var(--ruliad)';
-    row.innerHTML = `
-      <span class="lb-player" style="color:${entry.playerId==='p1'?'var(--p1)':'var(--p2)'}">
-        ${i+1}. ${entry.playerId.toUpperCase()}
-      </span>
-      <span class="lb-game" style="color:${gameColor}">${entry.gameId}</span>
-      <span class="lb-score">${entry.score}</span>
-    `;
-    el.appendChild(row);
-  });
-});
-
-// ---- RECONNECT ----
-OracleHarmonic.reconnect((count) => {
-  if (count > 0) {
-    document.getElementById('stat-tabs').textContent =
-      parseInt(document.getElementById('stat-tabs').textContent || '1') + 1;
-  }
-});
-
-// ---- CHAIN LOG ----
-function appendChainEntry(evt) {
-  const log = document.getElementById('chain-log');
-  const entry = document.createElement('div');
-
-  let gameClass = 'global';
-  let gameLabel = evt.gameId || '?';
-  if (evt.gameId === 'sim3colts')    { gameClass = 'sim3';   gameLabel = 'SIM3'; }
-  if (evt.gameId === 'retro-ruliad') { gameClass = 'ruliad'; gameLabel = 'RLAD'; }
-  if (evt.gameId === '*')            { gameClass = 'p2';     gameLabel = 'ALL'; }
-  if (evt.type?.includes('EFFECT') || evt.causedBy) gameClass = 'cross';
-
-  const block = String(evt.block || 0).padStart(4,'0');
-  entry.className = `chain-entry ${gameClass}`;
-  entry.innerHTML = `
-    <span class="chain-block">#${block}</span>
-    <span class="chain-game ${gameClass}">${gameLabel}</span>
-    <span class="chain-type">${evt.type}</span>
-    <span class="chain-who">${evt.playerId || ''}</span>
-  `;
-  log.appendChild(entry);
-  log.scrollTop = log.scrollHeight;
-  if (log.children.length > 120) log.removeChild(log.children[0]);
+function bootDone() {
+    const b = document.getElementById('boot-seq');
+    b.style.opacity = '0';
+    setTimeout(() => { b.style.display = 'none'; resetMatch(); requestAnimationFrame(renderLoop); }, 900);
 }
 
-// ---- PROVENANCE / FIRSTS ----
-function updateFirsts(evt) {
-  if (evt.type === 'POCKET' && !firstPocket) {
-    firstPocket = evt;
-    document.getElementById('first-pocket').textContent =
-      `${evt.playerId} / ${evt.gameId?.slice(0,4)} #${evt.block}`;
-  }
-  if (evt.type === 'P2_AUDIO_TRIGGER' && !firstP2) {
-    firstP2 = evt;
-    document.getElementById('first-p2').textContent = `blk #${evt.block}`;
-  }
-  if (evt.type === 'DIMENSION_SHIFT' && !firstDim) {
-    firstDim = evt;
-    document.getElementById('first-dim').textContent =
-      `${evt.playerId} / #${evt.block}`;
-  }
-  if (evt.type === 'TELEPORT' && !firstTele) {
-    firstTele = evt;
-    document.getElementById('first-tele').textContent =
-      `${evt.playerId} / #${evt.block}`;
-  }
+document.getElementById('boot-seq').addEventListener('click',  initAudio);
+document.getElementById('boot-seq').addEventListener('touchend', e => { e.preventDefault(); initAudio(); });
+
+// ---- PIXEL FONT ----
+const font = {
+    'A':[0,1,0,1,0,1,1,1,1,1,0,1,1,0,1],'B':[1,1,0,1,0,1,1,1,0,1,0,1,1,1,0],
+    'C':[1,1,1,1,0,0,1,0,0,1,0,0,1,1,1],'D':[1,1,0,1,0,1,1,0,1,1,0,1,1,1,0],
+    'E':[1,1,1,1,0,0,1,1,0,1,0,0,1,1,1],'F':[1,1,1,1,0,0,1,1,0,1,0,0,1,0,0],
+    'G':[0,1,1,1,0,0,1,0,1,1,0,1,0,1,1],'H':[1,0,1,1,0,1,1,1,1,1,0,1,1,0,1],
+    'I':[1,1,1,0,1,0,0,1,0,0,1,0,1,1,1],'J':[0,0,1,0,0,1,0,0,1,1,0,1,0,1,0],
+    'K':[1,0,1,1,1,0,1,0,0,1,1,0,1,0,1],'L':[1,0,0,1,0,0,1,0,0,1,0,0,1,1,1],
+    'M':[1,0,1,1,1,1,1,0,1,1,0,1,1,0,1],'N':[1,1,1,1,0,1,1,0,1,1,0,1,1,0,1],
+    'O':[1,1,1,1,0,1,1,0,1,1,0,1,1,1,1],'P':[1,1,1,1,0,1,1,1,1,1,0,0,1,0,0],
+    'Q':[1,1,1,1,0,1,1,0,1,1,1,1,0,0,1],'R':[1,1,1,1,0,1,1,1,0,1,0,1,1,0,1],
+    'S':[1,1,1,1,0,0,1,1,1,0,0,1,1,1,1],'T':[1,1,1,0,1,0,0,1,0,0,1,0,0,1,0],
+    'U':[1,0,1,1,0,1,1,0,1,1,0,1,1,1,1],'V':[1,0,1,1,0,1,1,0,1,1,0,1,0,1,0],
+    'W':[1,0,1,1,0,1,1,0,1,1,1,1,1,0,1],'X':[1,0,1,1,0,1,0,1,0,1,0,1,1,0,1],
+    'Y':[1,0,1,1,0,1,0,1,0,0,1,0,0,1,0],'Z':[1,1,1,0,0,1,0,1,0,1,0,0,1,1,1],
+    '0':[1,1,1,1,0,1,1,0,1,1,0,1,1,1,1],'1':[0,1,0,1,1,0,0,1,0,0,1,0,1,1,1],
+    '2':[1,1,1,0,0,1,1,1,1,1,0,0,1,1,1],'3':[1,1,1,0,0,1,1,1,1,0,0,1,1,1,1],
+    '4':[1,0,1,1,0,1,1,1,1,0,0,1,0,0,1],'5':[1,1,1,1,0,0,1,1,1,0,0,1,1,1,1],
+    '6':[1,1,1,1,0,0,1,1,1,1,0,1,1,1,1],'7':[1,1,1,0,0,1,0,0,1,0,0,1,0,0,1],
+    '8':[1,1,1,1,0,1,1,1,1,1,0,1,1,1,1],'9':[1,1,1,1,0,1,1,1,1,0,0,1,1,1,1],
+    ':':[0,0,0,0,1,0,0,0,0,0,1,0,0,0,0],' ':[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    '[':[1,1,0,1,0,0,1,0,0,1,0,0,1,1,0],']':[0,1,1,0,0,1,0,0,1,0,0,1,0,1,1],
+    '!':[0,1,0,0,1,0,0,1,0,0,0,0,0,1,0],'-':[0,0,0,0,0,0,1,1,1,0,0,0,0,0,0],
+    '.':[0,0,0,0,0,0,0,0,0,0,0,0,0,1,0],'/':[0,0,1,0,0,1,0,1,0,1,0,0,1,0,0],
+    '>':[1,0,0,0,1,0,0,0,1,0,1,0,1,0,0],'<':[0,0,1,0,1,0,1,0,0,0,1,0,0,0,1],
+    '*':[0,0,0,1,0,1,0,1,0,1,0,1,0,0,0],'+':[0,0,0,0,1,0,1,1,1,0,1,0,0,0,0]
+};
+
+function drawText(text, x, y, col, scale=1) {
+    let cx = x;
+    for (let i = 0; i < text.length; i++) {
+        const glyph = font[text[i].toUpperCase()] || font[' '];
+        for (let gy = 0; gy < 5; gy++)
+            for (let gx = 0; gx < 3; gx++)
+                if (glyph[gy*3+gx])
+                    for (let sy = 0; sy < scale; sy++)
+                        for (let sx = 0; sx < scale; sx++) {
+                            const px = Math.floor(cx+(gx*scale)+sx);
+                            const py = Math.floor(y+(gy*scale)+sy);
+                            if (px>=0 && px<GRID_W && py>=0 && py<GRID_H) buf[py*GRID_W+px] = col;
+                        }
+        cx += (3*scale)+scale;
+    }
 }
 
-function updateProvenance(evt) {
-  // Ghost state
-  const g1 = OracleHarmonic.getGhost('p1');
-  const g2 = OracleHarmonic.getGhost('p2');
-  document.getElementById('ghost-p1-conf').textContent = Math.round(g1.confidence * 100) + '%';
-  document.getElementById('ghost-p2-conf').textContent = Math.round(g2.confidence * 100) + '%';
-  document.getElementById('ghost-p2-game').textContent = g2.lastGameId || '—';
-  document.getElementById('ghost-block').textContent = OracleHarmonic.blockHeight;
+// ---- COLORS ----
+function makeColor(r,g,b) {
+    return 0xFF000000 | (Math.floor(b)<<16) | (Math.floor(g)<<8) | Math.floor(r);
 }
 
-// ---- CROSS TICKER ----
-function showCrossTick(msg) {
-  const el = document.getElementById('cross-ticker');
-  el.innerHTML = `<span class="tick-msg">⟶ ${msg}</span>`;
+// ============================================================
+// SNAKE SYSTEM
+// ============================================================
+
+const SNAKE_STEP  = 3;   // grid pixels per step
+const SNAKE_TICK  = 6;   // frames between moves
+const SNAKE_SIZE  = 2;   // radius of each segment in grid px
+const BALL_SIZE   = 2;   // collectible ball radius
+const MAX_SNAKE_POINTS = 10; // points to win snake game
+
+let snakeActive = false; // snake mode toggles with game rule? No — runs alongside
+let snakeTick   = 0;
+
+// Directions: {dx,dy} in grid pixels
+const DIR = { UP:{dx:0,dy:-1}, DOWN:{dx:0,dy:1}, LEFT:{dx:-1,dy:0}, RIGHT:{dx:1,dy:0} };
+
+let snake1 = { segs:[], dir: DIR.RIGHT, nextDir: DIR.RIGHT, alive: true, points: 0, color: 0xFFFFdd00 };
+let snake2 = { segs:[], dir: DIR.LEFT,  nextDir: DIR.LEFT,  alive: true, points: 0, color: 0xFFff00ff };
+
+// Collectible snake balls (different from colt billiard balls)
+let snakeBalls = [];
+let snakeWinner = null; // 'p1' | 'p2' | null
+
+// Convert normalised coords (-1..1) to grid px
+function normToGrid(nx, ny) {
+    const minD = Math.min(GRID_W, GRID_H);
+    return {
+        gx: Math.round(nx * (minD/2) + GRID_W/2),
+        gy: Math.round(ny * (minD/2) + GRID_H/2)
+    };
 }
 
-// ---- FRAME FLASH ----
-function flashFrame(which) {
-  const el = document.getElementById(`flash-${which}`);
-  if (!el) return;
-  el.style.opacity = '1';
-  setTimeout(() => { el.style.opacity = '0'; }, 250);
+// Is a grid point inside the current arena boundary?
+function isInsideArena(gx, gy) {
+    const minD = Math.min(GRID_W, GRID_H);
+    const nx   = (gx - GRID_W/2) / (minD/2);
+    const ny   = (gy - GRID_H/2) / (minD/2);
+    const d    = Math.sqrt(nx*nx + ny*ny);
+    let curR   = BOUNDARY_RADIUS - 0.08; // slight inset
+
+    if (geoMode === 0) return d < curR;
+    if (geoMode === 1) return Math.abs(nx) < curR && Math.abs(ny) < curR;
+    // MORPH
+    curR = BOUNDARY_RADIUS + Math.sin(globalTime*0.05)*0.05 - 0.08;
+    return d < curR;
 }
 
-// ---- SNAPSHOT ----
-function requestSnapshot() {
-  OracleHarmonic.requestSpectateSnapshot((snap) => {
-    appendChainEntry({
-      block: snap.blockHeight,
-      gameId: 'dashboard',
-      playerId: 'spectator',
-      type: 'SNAPSHOT',
-      data: { chainLen: snap.chain?.length }
+// Is a grid point in a pocket / hole?
+function isInHole(gx, gy) {
+    const minD = Math.min(GRID_W, GRID_H);
+    const nx   = (gx - GRID_W/2) / (minD/2);
+    const ny   = (gy - GRID_H/2) / (minD/2);
+    return checkHole(nx, ny, BOUNDARY_RADIUS);
+}
+
+function initSnakes() {
+    const cx = Math.floor(GRID_W/2);
+    const cy = Math.floor(GRID_H/2);
+
+    snake1.segs    = [];
+    snake1.dir     = DIR.RIGHT;
+    snake1.nextDir = DIR.RIGHT;
+    snake1.alive   = true;
+    snake1.points  = 0;
+    for (let i = 5; i >= 0; i--) snake1.segs.push({ x: cx - i*SNAKE_STEP, y: cy - 8 });
+
+    snake2.segs    = [];
+    snake2.dir     = DIR.LEFT;
+    snake2.nextDir = DIR.LEFT;
+    snake2.alive   = true;
+    snake2.points  = 0;
+    for (let i = 5; i >= 0; i--) snake2.segs.push({ x: cx + i*SNAKE_STEP, y: cy + 8 });
+
+    snakeBalls  = [];
+    snakeWinner = null;
+    spawnSnakeBall();
+    spawnSnakeBall();
+}
+
+function spawnSnakeBall() {
+    // Place a ball at a random inside-arena position
+    for (let attempt = 0; attempt < 80; attempt++) {
+        const gx = Math.floor(Math.random() * GRID_W);
+        const gy = Math.floor(Math.random() * GRID_H);
+        if (!isInsideArena(gx, gy)) continue;
+        if (isInHole(gx, gy)) continue;
+        // Not on top of a snake
+        const onSnake = [...snake1.segs, ...snake2.segs].some(s => Math.abs(s.x-gx)<4 && Math.abs(s.y-gy)<4);
+        if (onSnake) continue;
+        snakeBalls.push({ gx, gy, pulse: Math.random()*Math.PI*2 });
+        return;
+    }
+}
+
+// AI for snake2 — looks ahead, avoids walls/self
+function aiMoveSnake2() {
+    if (!snake2.alive) return;
+    const head  = snake2.segs[snake2.segs.length-1];
+    const dirs  = [DIR.UP, DIR.DOWN, DIR.LEFT, DIR.RIGHT];
+    const cur   = snake2.dir;
+
+    // Can't reverse
+    const safe = dirs.filter(d => !(d.dx === -cur.dx && d.dy === -cur.dy));
+
+    // Score each direction
+    let best = null, bestScore = -Infinity;
+    for (const d of safe) {
+        const nx = head.x + d.dx * SNAKE_STEP;
+        const ny = head.y + d.dy * SNAKE_STEP;
+
+        if (!isInsideArena(nx, ny)) continue;
+        if (isInHole(nx, ny)) continue;
+
+        // Avoid own body
+        const hitSelf = snake2.segs.some(s => Math.abs(s.x-nx)<SNAKE_SIZE*2 && Math.abs(s.y-ny)<SNAKE_SIZE*2);
+        if (hitSelf) continue;
+
+        // Avoid P1 snake
+        const hitP1 = snake1.segs.some(s => Math.abs(s.x-nx)<SNAKE_SIZE*2 && Math.abs(s.y-ny)<SNAKE_SIZE*2);
+
+        // Score: distance to nearest ball (closer = better)
+        let ballScore = 0;
+        if (snakeBalls.length > 0) {
+            const nearest = snakeBalls.reduce((a,b) =>
+                Math.hypot(b.gx-nx,b.gy-ny) < Math.hypot(a.gx-nx,a.gy-ny) ? b : a
+            );
+            ballScore = 200 / (Math.hypot(nearest.gx-nx, nearest.gy-ny) + 1);
+        }
+
+        // Prefer continuing direction (reduce jitter)
+        const continuity = (d.dx === cur.dx && d.dy === cur.dy) ? 10 : 0;
+        const score = ballScore + continuity - (hitP1 ? 50 : 0);
+
+        if (score > bestScore) { bestScore = score; best = d; }
+    }
+
+    if (best) snake2.nextDir = best;
+}
+
+function stepSnakes() {
+    if (snakeWinner) return;
+
+    aiMoveSnake2();
+
+    [snake1, snake2].forEach((sn, idx) => {
+        if (!sn.alive) return;
+        sn.dir = sn.nextDir;
+        const head = sn.segs[sn.segs.length-1];
+        const nx = head.x + sn.dir.dx * SNAKE_STEP;
+        const ny = head.y + sn.dir.dy * SNAKE_STEP;
+
+        // Wall / hole death
+        if (!isInsideArena(nx, ny) || isInHole(nx, ny)) {
+            sn.alive = false;
+            snakeWinner = idx === 0 ? 'p2' : 'p1';
+            return;
+        }
+
+        // Self collision
+        const hitSelf = sn.segs.some(s => Math.abs(s.x-nx)<SNAKE_SIZE && Math.abs(s.y-ny)<SNAKE_SIZE);
+        if (hitSelf) {
+            sn.alive = false;
+            snakeWinner = idx === 0 ? 'p2' : 'p1';
+            return;
+        }
+
+        // Head-on collision with other snake
+        const other = idx === 0 ? snake2 : snake1;
+        const hitOther = other.segs.some(s => Math.abs(s.x-nx)<SNAKE_SIZE*2 && Math.abs(s.y-ny)<SNAKE_SIZE*2);
+        if (hitOther) {
+            sn.alive = false;
+            snakeWinner = idx === 0 ? 'p2' : 'p1';
+            return;
+        }
+
+        sn.segs.push({ x: nx, y: ny });
+
+        // Check ball collection
+        let ate = false;
+        snakeBalls = snakeBalls.filter(b => {
+            if (Math.abs(b.gx-nx)<SNAKE_SIZE+BALL_SIZE+2 && Math.abs(b.gy-ny)<SNAKE_SIZE+BALL_SIZE+2) {
+                sn.points++;
+                ate = true;
+                if (sn.points >= MAX_SNAKE_POINTS) snakeWinner = idx === 0 ? 'p1' : 'p2';
+                return false;
+            }
+            return true;
+        });
+
+        if (ate) {
+            spawnSnakeBall();
+            // Keep tail (snake grows)
+        } else {
+            sn.segs.shift(); // move — don't grow
+        }
     });
-  });
 }
 
-// ---- AUDIO METER + WAVEFORM LOOP ----
-function uiLoop() {
-  const state = OracleHarmonic.getAudioState();
+// Draw snakes into buf
+function drawSnakes() {
+    // Draw collectible balls
+    snakeBalls.forEach(b => {
+        b.pulse += 0.15;
+        const pulse = Math.abs(Math.sin(b.pulse));
+        const col = makeColor(255, 255*pulse, 0);
+        for (let dy=-BALL_SIZE; dy<=BALL_SIZE; dy++)
+            for (let dx=-BALL_SIZE; dx<=BALL_SIZE; dx++) {
+                if (dx*dx+dy*dy > BALL_SIZE*BALL_SIZE) continue;
+                const px=b.gx+dx, py=b.gy+dy;
+                if (px>=0&&px<GRID_W&&py>=0&&py<GRID_H) buf[py*GRID_W+px]=col;
+            }
+    });
 
-  document.getElementById('m-amp').style.width    = (state.amplitude * 100) + '%';
-  document.getElementById('m-bass').style.width   = (state.bass * 100) + '%';
-  document.getElementById('m-mid').style.width    = (state.mid * 100) + '%';
-  document.getElementById('m-treble').style.width = (state.treble * 100) + '%';
-  document.getElementById('v-amp').textContent    = Math.round(state.amplitude * 100) + '%';
-  document.getElementById('v-bass').textContent   = Math.round(state.bass * 100) + '%';
-  document.getElementById('v-mid').textContent    = Math.round(state.mid * 100) + '%';
-  document.getElementById('v-treble').textContent = Math.round(state.treble * 100) + '%';
-
-  // Waveform
-  wfPhase += 0.06;
-  const W = wfCanvas.width, H = wfCanvas.height;
-  wfCtx.clearRect(0, 0, W, H);
-  wfCtx.fillStyle = 'rgba(0,0,0,0.6)';
-  wfCtx.fillRect(0, 0, W, H);
-
-  wfCtx.beginPath();
-  wfCtx.strokeStyle = `rgba(0,255,204,${0.4 + state.amplitude * 0.5})`;
-  wfCtx.lineWidth = 1.5;
-  for (let x = 0; x < W; x++) {
-    const t = x / W;
-    const y = H/2 + Math.sin(t * 12 + wfPhase) * state.bass * 10
-                  + Math.sin(t * 25 + wfPhase * 1.3) * state.mid * 7
-                  + Math.sin(t * 50 + wfPhase * 2.1) * state.treble * 4;
-    if (x === 0) wfCtx.moveTo(x, y);
-    else wfCtx.lineTo(x, y);
-  }
-  wfCtx.stroke();
-
-  requestAnimationFrame(uiLoop);
+    // Draw snake segments
+    [[snake1, 0xFFFFdd00, 0xFF88aa00], [snake2, 0xFFff00ff, 0xFF880088]].forEach(([sn, headCol, bodyCol]) => {
+        sn.segs.forEach((seg, i) => {
+            const isHead = i === sn.segs.length-1;
+            const col    = isHead ? headCol : bodyCol;
+            const r      = isHead ? SNAKE_SIZE+1 : SNAKE_SIZE;
+            for (let dy=-r; dy<=r; dy++)
+                for (let dx=-r; dx<=r; dx++) {
+                    if (dx*dx+dy*dy > r*r) continue;
+                    const px=seg.x+dx, py=seg.y+dy;
+                    if (px>=0&&px<GRID_W&&py>=0&&py<GRID_H) buf[py*GRID_W+px]=col;
+                }
+        });
+    });
 }
 
-uiLoop();
+// ============================================================
+// BILLIARD COLT PHYSICS (original, untouched)
+// ============================================================
 
-// Initial chain entry
-appendChainEntry({
-  block: 0, gameId: 'dashboard', playerId: 'system',
-  type: 'BOOT', data: {}
+function getHyperbolicDistance(x,y) { return Math.sqrt(x*x+y*y); }
+
+function checkHole(nx,ny,rad) {
+    if (geoMode===0) return (getHyperbolicDistance(nx,ny)>rad-0.15 && Math.abs(nx)>0.5 && Math.abs(ny)>0.5);
+    if (geoMode===1) return (Math.abs(nx)>rad-0.15 && Math.abs(ny)>rad-0.15);
+    const theta=Math.atan2(ny,nx);
+    return (getHyperbolicDistance(nx,ny)>rad-0.15 && Math.abs(Math.sin(2*theta+globalTime*0.03))>0.9);
+}
+
+// Returns array of hole positions in grid coords for visual indicators
+function getHolePositions() {
+    const positions = [];
+    const minD = Math.min(GRID_W, GRID_H);
+    const steps = 80;
+    for (let i = 0; i < steps; i++) {
+        for (let j = 0; j < steps; j++) {
+            const gx = Math.floor((i/steps)*GRID_W);
+            const gy = Math.floor((j/steps)*GRID_H);
+            const nx = (gx-GRID_W/2)/(minD/2);
+            const ny = (gy-GRID_H/2)/(minD/2);
+            if (checkHole(nx,ny,BOUNDARY_RADIUS)) {
+                positions.push({gx,gy});
+            }
+        }
+    }
+    return positions;
+}
+
+// Corner/hole indicators — drawn as blinking markers
+let holeMarkers = []; // sampled once per geoMode change
+let lastGeoModeForHoles = -1;
+let holeBlinkPhase = 0;
+
+function updateHoleMarkers() {
+    // Sample hole boundary edge points
+    if (geoMode !== lastGeoModeForHoles) {
+        lastGeoModeForHoles = geoMode;
+        holeMarkers = [];
+        const minD = Math.min(GRID_W, GRID_H);
+
+        if (geoMode === 0 || geoMode === 2) {
+            // Corner-like holes at diagonals
+            const corners = [
+                {nx: 0.72, ny: 0.72}, {nx:-0.72,ny: 0.72},
+                {nx: 0.72, ny:-0.72}, {nx:-0.72,ny:-0.72},
+                {nx: 0.0,  ny: 0.88}, {nx: 0.0,  ny:-0.88},
+                {nx: 0.88, ny: 0.0},  {nx:-0.88, ny: 0.0}
+            ];
+            corners.forEach(c => {
+                const gx = Math.round(c.nx*(minD/2)+GRID_W/2);
+                const gy = Math.round(c.ny*(minD/2)+GRID_H/2);
+                if (gx>=0&&gx<GRID_W&&gy>=0&&gy<GRID_H) holeMarkers.push({gx,gy});
+            });
+        } else {
+            // RECT mode — 4 corners exactly
+            const r = BOUNDARY_RADIUS * 0.85;
+            const corners = [
+                {nx: r, ny: r},{nx:-r,ny: r},
+                {nx: r,ny:-r},{nx:-r,ny:-r}
+            ];
+            corners.forEach(c => {
+                const gx = Math.round(c.nx*(minD/2)+GRID_W/2);
+                const gy = Math.round(c.ny*(minD/2)+GRID_H/2);
+                if (gx>=0&&gx<GRID_W&&gy>=0&&gy<GRID_H) holeMarkers.push({gx,gy});
+            });
+        }
+    }
+}
+
+function drawHoleIndicators() {
+    holeBlinkPhase += 0.07;
+    const bright = Math.abs(Math.sin(holeBlinkPhase));
+    const col = makeColor(255*bright, 0, 180*bright);
+    const r = 3;
+
+    holeMarkers.forEach(h => {
+        // Draw a small cross/diamond marker
+        for (let d = -r; d <= r; d++) {
+            const px1 = h.gx+d, py1 = h.gy;
+            const px2 = h.gx,   py2 = h.gy+d;
+            if (px1>=0&&px1<GRID_W&&py1>=0&&py1<GRID_H) buf[py1*GRID_W+px1]=col;
+            if (px2>=0&&px2<GRID_W&&py2>=0&&py2<GRID_H) buf[py2*GRID_W+px2]=col;
+        }
+        // Ring
+        for (let angle = 0; angle < Math.PI*2; angle += 0.4) {
+            const px = Math.round(h.gx + Math.cos(angle)*(r+1));
+            const py = Math.round(h.gy + Math.sin(angle)*(r+1));
+            if (px>=0&&px<GRID_W&&py>=0&&py<GRID_H) buf[py*GRID_W+px]=col;
+        }
+    });
+}
+
+function handlePocketEvent(coltIndex) {
+    if (gameRule === 0) {
+        // SINK: award point to whoever sank
+        coltIndex === 0 ? p1Sinks++ : p2Sinks++;
+    } else {
+        // SURV: losing to be sunk — award to opponent
+        coltIndex === 0 ? p2Sinks++ : p1Sinks++;
+    }
+
+    // Teleport out opposite side
+    colts[coltIndex].x = -colts[coltIndex].x * 0.95;
+    colts[coltIndex].y = -colts[coltIndex].y * 0.95;
+    colts[coltIndex].hist = [];
+
+    // Check win
+    if (p1Sinks >= WINS_TO_MATCH) { p1Wins++; startNewRound(); }
+    if (p2Sinks >= WINS_TO_MATCH) { p2Wins++; startNewRound(); }
+}
+
+function startNewRound() {
+    p1Sinks = 0; p2Sinks = 0;
+    makeColts();
+    initSnakes();
+}
+
+function resetMatch() {
+    p1Sinks = 0; p2Sinks = 0;
+    p1Wins  = 0; p2Wins  = 0;
+    timeRemaining  = MATCH_DURATION;
+    matchStartTime = Date.now();
+    gameState = 'PLAYING';
+    makeColts();
+    initSnakes();
+}
+
+function updatePhysics() {
+    if (gameState !== 'PLAYING') return;
+    const elapsed = Math.floor((Date.now()-matchStartTime)/1000);
+    timeRemaining = Math.max(0, MATCH_DURATION-elapsed);
+    if (timeRemaining===0) { gameState='GAMEOVER'; return; }
+
+    if (analyser) {
+        analyser.getByteFrequencyData(dataArray);
+        let b=0; for(let i=0;i<8;i++) b+=dataArray[i]; bassLevel=(b/8)/255;
+        let t=0; for(let i=20;i<50;i++) t+=dataArray[i]; trebleLevel=(t/30)/255;
+    }
+
+    p1Wave.amp = bassLevel*2.0;
+    p2Wave.amp = trebleLevel*2.0;
+    p1Wave.phase += 0.02+(bassLevel*0.05);
+    p2Wave.phase += 0.03+(trebleLevel*0.05);
+
+    colts.forEach((c,index)=>{
+        const wave = index===0 ? p1Wave : p2Wave;
+        const fx = (wave.amp/800)*Math.cos(wave.freq*globalTime+wave.phase);
+        const fy = (wave.amp/800)*Math.sin(wave.freq*globalTime+wave.phase*1.1);
+        c.vx=(c.vx+fx)*0.98; c.vy=(c.vy+fy)*0.98;
+        let nx=c.x+c.vx, ny=c.y+c.vy;
+        const dist=getHyperbolicDistance(nx,ny);
+        let curR=BOUNDARY_RADIUS;
+        if(geoMode===2) curR+=Math.sin(globalTime*0.05)*0.05+bassLevel*0.1;
+
+        if (checkHole(nx,ny,curR)) {
+            c.vx+=(Math.sign(nx)*curR-nx)*0.01;
+            c.vy+=(Math.sign(ny)*curR-ny)*0.01;
+            if(dist>curR-0.02) { handlePocketEvent(index); return; }
+        }
+
+        if (geoMode===0) {
+            if(dist>BOUNDARY_RADIUS){const nX=nx/dist,nY=ny/dist,dot=c.vx*nX+c.vy*nY;c.vx-=2*dot*nX;c.vy-=2*dot*nY;nx=nX*BOUNDARY_RADIUS;ny=nY*BOUNDARY_RADIUS;}
+        } else if(geoMode===1) {
+            if(Math.abs(nx)>BOUNDARY_RADIUS){c.vx*=-1;nx=Math.sign(nx)*BOUNDARY_RADIUS;}
+            if(Math.abs(ny)>BOUNDARY_RADIUS){c.vy*=-1;ny=Math.sign(ny)*BOUNDARY_RADIUS;}
+        } else {
+            if(dist>curR){const nX=nx/dist,nY=ny/dist,dot=c.vx*nX+c.vy*nY;c.vx-=2*dot*nX;c.vy-=2*dot*nY;nx=nX*curR;ny=nY*curR;}
+        }
+        c.x=nx; c.y=ny;
+        c.hist.push({x:nx,y:ny});
+        if(c.hist.length>25) c.hist.shift();
+    });
+
+    // Snake tick
+    snakeTick++;
+    if (snakeTick >= SNAKE_TICK) {
+        snakeTick = 0;
+        stepSnakes();
+        // Respawn round if snake winner
+        if (snakeWinner && gameState === 'PLAYING') {
+            if (snakeWinner === 'p1') p1Wins++;
+            else p2Wins++;
+            setTimeout(() => { initSnakes(); snakeWinner = null; }, 1800);
+        }
+    }
+
+    globalTime++;
+}
+
+// ============================================================
+// RENDER
+// ============================================================
+
+function renderLoop() {
+    if (gameState === 'BOOT') return;
+    updatePhysics();
+    updateHoleMarkers();
+
+    const t = globalTime*0.05;
+    const minD = Math.min(GRID_W, GRID_H);
+
+    const cW1 = makeColor(150+bassLevel*105, 0, 50+bassLevel*155);
+    const cW2 = makeColor(0, 100+trebleLevel*155, 150+trebleLevel*105);
+    const cI  = makeColor(255-bassLevel*50, 100+trebleLevel*155, 0);
+    const cP1 = 0xFFFFdd00, cP2 = 0xFFff00ff;
+    const cH  = 0xFFaaffaa, cA  = 0xFF0000FF;
+    const cO  = (globalTime%30<15) ? cH : makeColor(50,150,50);
+    const cS1 = makeColor(255,50,200), cS2 = makeColor(50,255,100), cNB = makeColor(240,200,100);
+
+    // ---- PIXEL BACKGROUND ----
+    for (let i = 0; i < buf.length; i++) {
+        const gx=i%GRID_W, gy=Math.floor(i/GRID_W);
+        const nx=(gx-GRID_W/2)/(minD/2), ny=(gy-GRID_H/2)/(minD/2);
+        let isB=false, isP=false, isOut=false, warp=1;
+        let curR=BOUNDARY_RADIUS;
+
+        if (geoMode===0) {
+            if(getHyperbolicDistance(nx,ny)>BOUNDARY_RADIUS+0.02) isOut=true;
+            if(getHyperbolicDistance(nx,ny)>BOUNDARY_RADIUS-0.02&&getHyperbolicDistance(nx,ny)<=BOUNDARY_RADIUS+0.02) isB=true;
+            warp=1/(1-Math.pow(Math.min(getHyperbolicDistance(nx,ny)/BOUNDARY_RADIUS,0.99),2)+0.1);
+            isP=checkHole(nx,ny,BOUNDARY_RADIUS);
+        } else if(geoMode===1) {
+            if(Math.abs(nx)>BOUNDARY_RADIUS+0.02||Math.abs(ny)>BOUNDARY_RADIUS+0.02) isOut=true;
+            if((Math.abs(nx)>BOUNDARY_RADIUS-0.02&&Math.abs(nx)<=BOUNDARY_RADIUS+0.02&&Math.abs(ny)<=BOUNDARY_RADIUS+0.02)||(Math.abs(ny)>BOUNDARY_RADIUS-0.02&&Math.abs(ny)<=BOUNDARY_RADIUS+0.02&&Math.abs(nx)<=BOUNDARY_RADIUS+0.02)) isB=true;
+            isP=checkHole(nx,ny,BOUNDARY_RADIUS);
+        } else {
+            curR=BOUNDARY_RADIUS+Math.sin(t)*0.05+bassLevel*0.1;
+            if(getHyperbolicDistance(nx,ny)>curR+0.02) isOut=true;
+            if(getHyperbolicDistance(nx,ny)>curR-0.02&&getHyperbolicDistance(nx,ny)<=curR+0.02) isB=true;
+            warp=1/(1-Math.pow(Math.min(getHyperbolicDistance(nx,ny)/curR,0.99),2)+0.1);
+            isP=checkHole(nx,ny,curR);
+        }
+
+        let bgP=makeColor(30,0,20);
+        if(isOut&&!isB&&!isP) {
+            const foam=Math.sin(getHyperbolicDistance(nx,ny)*15-t)*Math.cos(Math.atan2(ny,nx)*8+t*0.5);
+            bgP=foam>0.6?makeColor(20+bassLevel*30,0,40+trebleLevel*30):foam>0.2?makeColor(5,15+bassLevel*15,30):makeColor(2,2,5);
+        } else if(isP) {
+            const swirl=Math.sin(nx*25+ny*25-t*5);
+            bgP=swirl>0.7?makeColor(50,0,60):makeColor(0,0,0);
+        } else if(isB) { bgP=cW2; }
+        else {
+            const gX=Math.abs(Math.sin(nx*15*warp)), gY=Math.abs(Math.sin(ny*15*warp));
+            if(gX<0.1||gY<0.1) bgP=0xFF111111;
+            else {
+                const inter=Math.abs(p1Wave.amp*Math.cos(12*warp*nx-t+p1Wave.phase)*p2Wave.amp*Math.sin(12*warp*ny+t+p2Wave.phase)+Math.sin((nx*nx+ny*ny)*12-t)+Math.sin(Math.atan2(ny,nx)*4+getHyperbolicDistance(nx,ny)*10-t*2)*0.5);
+                bgP=inter>0.8?cW2:inter>0.4?cI:inter>0.1?cW1:makeColor(30,0,20);
+            }
+        }
+
+        const distP1=Math.pow(nx-colts[0].x,2)+Math.pow(ny-colts[0].y,2);
+        const distP2=Math.pow(nx-colts[1].x,2)+Math.pow(ny-colts[1].y,2);
+        const isP1=distP1<0.002, isP2=distP2<0.002;
+
+        if (visMode===0) {
+            if(isP1){buf[i]=cP1;continue;} if(isP2){buf[i]=cP2;continue;}
+            let drawn=false;
+            for(let p of colts[0].hist) if(Math.pow(nx-p.x,2)+Math.pow(ny-p.y,2)<0.0005){buf[i]=cP1&0x77FFFFFF;drawn=true;break;} if(drawn)continue;
+            for(let p of colts[1].hist) if(Math.pow(nx-p.x,2)+Math.pow(ny-p.y,2)<0.0005){buf[i]=cP2&0x77FFFFFF;drawn=true;break;} if(drawn)continue;
+            buf[i]=bgP;
+        } else {
+            const isS=(gy%4)<2, sC=isS?cS1:cS2;
+            const bgR=bgP&0xFF,bgG=(bgP>>8)&0xFF,bgBB=(bgP>>16)&0xFF;
+            const sR=sC&0xFF,sG=(sC>>8)&0xFF,sB=(sC>>16)&0xFF;
+            if(isP1) buf[i]=isS?cS1:cNB; else if(isP2) buf[i]=!isS?cS2:cNB;
+            else buf[i]=makeColor((bgR+sR)/2,(bgG+sG)/2,(bgBB+sB)/2);
+        }
+    }
+
+    // ---- HOLE INDICATORS ----
+    drawHoleIndicators();
+
+    // ---- SNAKES ----
+    drawSnakes();
+
+    // ---- HUD ----
+    // Top row — scores (lifted from very top)
+    const hudY = 3;
+    drawText('P1:'+p1Sinks, 2, hudY, cP1);
+    drawText('T:'+timeRemaining.toString().padStart(2,'0'), Math.floor(GRID_W/2)-8, hudY, (timeRemaining<=10?cA:cH));
+    drawText('P2:'+p2Sinks, Math.max(0,GRID_W-22), hudY, cP2);
+
+    // Second row — wins
+    const winsY = hudY + 8;
+    drawText('W:'+p1Wins, 2, winsY, makeColor(200,150,0));
+    drawText('FIRST TO '+WINS_TO_MATCH, Math.floor(GRID_W/2)-18, winsY, makeColor(100,200,100));
+    drawText('W:'+p2Wins, Math.max(0,GRID_W-22), winsY, makeColor(200,0,150));
+
+    // Snake score row
+    const snkY = winsY + 8;
+    drawText('SN:'+snake1.points, 2, snkY, makeColor(255,220,0));
+    drawText('SNAKE', Math.floor(GRID_W/2)-9, snkY, makeColor(180,180,0));
+    drawText('SN:'+snake2.points, Math.max(0,GRID_W-22), snkY, makeColor(255,0,220));
+
+    // Snake winner flash
+    if (snakeWinner) {
+        const wCol = snakeWinner==='p1' ? cP1 : cP2;
+        const wTxt = snakeWinner==='p1' ? 'P1 WINS SNAKE!' : 'P2 WINS SNAKE!';
+        drawText(wTxt, Math.floor(GRID_W/2)-27, Math.floor(GRID_H/2)-6, wCol, 1);
+    }
+
+    // Bottom HUD — lifted above browser chrome using GRID_SAFE_BOTTOM
+    const botY1 = GRID_H - GRID_SAFE_BOTTOM - 16;
+    const botY2 = botY1 + 8;
+
+    drawText('ONLINE:24MS', 2, botY2, cO);
+    drawText('GEO:'+(geoMode===0?'HYPER':geoMode===1?'RECT':'MORPH'), 2, botY1, cH);
+    drawText('MODE:'+(gameRule===0?'SINK':'SURV'), Math.max(0,GRID_W-46), botY1, cH);
+    drawText('VIS:'+(visMode===0?'NORM':'ILLUS'), Math.max(0,GRID_W-42), botY2, cH);
+
+    // GAMEOVER
+    if (gameState==='GAMEOVER') {
+        for(let i=0;i<buf.length;i++) buf[i]=(buf[i]&0x44FFFFFF);
+        const wT=p1Wins>p2Wins?'P1 WINS!':p2Wins>p1Wins?'P2 WINS!':'DRAW!';
+        const wC=p1Wins>p2Wins?cP1:p2Wins>p1Wins?cP2:cH;
+        drawText(wT, Math.floor(GRID_W/2)-15, Math.floor(GRID_H/2)-10, wC);
+        drawText('CLICK REMATCH', Math.floor(GRID_W/2)-25, Math.floor(GRID_H/2)+5, cH);
+    }
+
+    offCtx.putImageData(imgData,0,0);
+    ctx.drawImage(offCanvas,0,0,canvas.width,canvas.height);
+    requestAnimationFrame(renderLoop);
+}
+
+// ---- INPUT ----
+
+// Keyboard P1 snake
+window.addEventListener('keydown', e => {
+    if (gameState==='BOOT') return;
+    if (gameState==='GAMEOVER') { resetMatch(); return; }
+    const cur = snake1.dir;
+    if ((e.key==='ArrowUp'    ||e.key==='w') && cur!==DIR.DOWN)  snake1.nextDir=DIR.UP;
+    if ((e.key==='ArrowDown'  ||e.key==='s') && cur!==DIR.UP)    snake1.nextDir=DIR.DOWN;
+    if ((e.key==='ArrowLeft'  ||e.key==='a') && cur!==DIR.RIGHT) snake1.nextDir=DIR.LEFT;
+    if ((e.key==='ArrowRight' ||e.key==='d') && cur!==DIR.LEFT)  snake1.nextDir=DIR.RIGHT;
 });
+
+// D-PAD buttons
+document.getElementById('btn-up').addEventListener('touchstart',    e=>{e.preventDefault();if(snake1.dir!==DIR.DOWN)  snake1.nextDir=DIR.UP;   },{passive:false});
+document.getElementById('btn-down').addEventListener('touchstart',  e=>{e.preventDefault();if(snake1.dir!==DIR.UP)    snake1.nextDir=DIR.DOWN; },{passive:false});
+document.getElementById('btn-left').addEventListener('touchstart',  e=>{e.preventDefault();if(snake1.dir!==DIR.RIGHT) snake1.nextDir=DIR.LEFT; },{passive:false});
+document.getElementById('btn-right').addEventListener('touchstart', e=>{e.preventDefault();if(snake1.dir!==DIR.LEFT)  snake1.nextDir=DIR.RIGHT;},{passive:false});
+document.getElementById('btn-up').addEventListener('mousedown',    ()=>{if(snake1.dir!==DIR.DOWN)  snake1.nextDir=DIR.UP;   });
+document.getElementById('btn-down').addEventListener('mousedown',  ()=>{if(snake1.dir!==DIR.UP)    snake1.nextDir=DIR.DOWN; });
+document.getElementById('btn-left').addEventListener('mousedown',  ()=>{if(snake1.dir!==DIR.RIGHT) snake1.nextDir=DIR.LEFT; });
+document.getElementById('btn-right').addEventListener('mousedown', ()=>{if(snake1.dir!==DIR.LEFT)  snake1.nextDir=DIR.RIGHT;});
+
+// Mode buttons
+document.getElementById('btn-geo').addEventListener('click',  ()=>{ geoMode=(geoMode+1)%3; lastGeoModeForHoles=-1; });
+document.getElementById('btn-rule').addEventListener('click', ()=>{ gameRule=(gameRule+1)%2; });
+document.getElementById('btn-vis').addEventListener('click',  ()=>{ visMode=(visMode+1)%2; });
+
+// Old tap-zone interaction still works for original gameplay
+canvas.addEventListener('pointerdown', (e) => {
+    if (gameState==='BOOT') return;
+    if (gameState==='GAMEOVER') { resetMatch(); return; }
+    // Original bottom-zone taps still work if not hitting dpad
+    const rect = canvas.getBoundingClientRect();
+    const gx = Math.floor((e.clientX-rect.left)*(GRID_W/Math.max(1,rect.width)));
+    const gy = Math.floor((e.clientY-rect.top) *(GRID_H/Math.max(1,rect.height)));
+    if (gy > GRID_H-35) {
+        if (gx < GRID_W/2) { geoMode=(geoMode+1)%3; lastGeoModeForHoles=-1; }
+        else {
+            if (gy < GRID_H-18) gameRule=(gameRule+1)%2;
+            else visMode=(visMode+1)%2;
+        }
+    }
+});
+
+// Swipe detection for snake on mobile
+let swipeStart = null;
+canvas.addEventListener('touchstart', e => {
+    swipeStart = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+}, {passive:true});
+canvas.addEventListener('touchend', e => {
+    if (!swipeStart) return;
+    const dx = e.changedTouches[0].clientX - swipeStart.x;
+    const dy = e.changedTouches[0].clientY - swipeStart.y;
+    if (Math.abs(dx) < 10 && Math.abs(dy) < 10) { swipeStart=null; return; }
+    const cur = snake1.dir;
+    if (Math.abs(dx) > Math.abs(dy)) {
+        if (dx > 0 && cur!==DIR.LEFT)  snake1.nextDir=DIR.RIGHT;
+        if (dx < 0 && cur!==DIR.RIGHT) snake1.nextDir=DIR.LEFT;
+    } else {
+        if (dy > 0 && cur!==DIR.UP)   snake1.nextDir=DIR.DOWN;
+        if (dy < 0 && cur!==DIR.DOWN) snake1.nextDir=DIR.UP;
+    }
+    swipeStart = null;
+}, {passive:true});
 
 </script>
 </body>
