@@ -1,0 +1,667 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RULIARDS // COMMAND</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Mono:wght@300;400;600&display=swap');
+
+:root {
+  --bg:       #080808;
+  --surface:  #0e0e0e;
+  --border:   #1e1e1e;
+  --p1:       #00ffcc;
+  --p2:       #ff3366;
+  --neutral:  #ffcc00;
+  --sim3:     #00aaff;
+  --ruliad:   #aa44ff;
+  --dim:      rgba(255,255,255,0.12);
+  --text:     #c8c8c8;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'IBM Plex Mono', monospace;
+  overflow: hidden;
+}
+
+/* GRAIN */
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+  pointer-events: none;
+  z-index: 9999;
+  opacity: 0.6;
+}
+
+/* LAYOUT */
+#app {
+  display: grid;
+  grid-template-rows: 48px 1fr 180px;
+  grid-template-columns: 1fr 1fr 280px;
+  height: 100vh;
+  gap: 1px;
+  background: var(--border);
+}
+
+/* HEADER */
+#header {
+  grid-column: 1 / -1;
+  background: var(--surface);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+#header h1 {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 1.5rem;
+  letter-spacing: 6px;
+  color: #fff;
+}
+
+.status-row {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+}
+
+.status-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--border);
+  display: inline-block;
+  margin-right: 5px;
+}
+.status-dot.on { background: var(--p1); box-shadow: 0 0 6px var(--p1); animation: blink 2s infinite; }
+.status-dot.warn { background: var(--neutral); box-shadow: 0 0 6px var(--neutral); }
+
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+.status-label {
+  font-size: 0.55rem;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+.status-label span { color: var(--text); }
+
+/* GAME FRAMES */
+.game-frame-wrap {
+  background: #000;
+  position: relative;
+  overflow: hidden;
+}
+
+.game-frame-wrap iframe {
+  width: 100%;
+  height: 100%;
+  border: none;
+  display: block;
+}
+
+.game-label {
+  position: absolute;
+  top: 8px;
+  left: 10px;
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 0.75rem;
+  letter-spacing: 4px;
+  z-index: 10;
+  pointer-events: none;
+}
+
+.game-label.sim3   { color: var(--sim3); text-shadow: 0 0 8px var(--sim3); }
+.game-label.ruliad { color: var(--ruliad); text-shadow: 0 0 8px var(--ruliad); }
+
+.cross-flash {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  z-index: 5;
+  transition: opacity 0.1s;
+}
+.cross-flash.sim3-flash   { background: radial-gradient(ellipse, rgba(0,170,255,0.15) 0%, transparent 70%); }
+.cross-flash.ruliad-flash { background: radial-gradient(ellipse, rgba(170,68,255,0.15) 0%, transparent 70%); }
+
+/* RIGHT PANEL */
+#right-panel {
+  grid-row: 2 / 4;
+  background: var(--surface);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.panel-section {
+  border-bottom: 1px solid var(--border);
+  padding: 12px;
+  flex-shrink: 0;
+}
+
+.panel-title {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 0.8rem;
+  letter-spacing: 4px;
+  margin-bottom: 8px;
+  color: #fff;
+}
+
+/* AUDIO METERS */
+.meter-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 5px;
+}
+.meter-key {
+  font-size: 0.5rem;
+  letter-spacing: 1px;
+  width: 52px;
+  color: var(--dim);
+  flex-shrink: 0;
+}
+.meter-track {
+  flex: 1;
+  height: 4px;
+  background: rgba(255,255,255,0.06);
+  border-radius: 1px;
+  overflow: hidden;
+}
+.meter-fill {
+  height: 100%;
+  border-radius: 1px;
+  width: 0%;
+  transition: width 0.08s linear;
+}
+.meter-fill.amp    { background: var(--p1); box-shadow: 0 0 4px var(--p1); }
+.meter-fill.bass   { background: var(--p2); }
+.meter-fill.mid    { background: var(--neutral); }
+.meter-fill.treble { background: var(--sim3); }
+.meter-val {
+  font-size: 0.48rem;
+  width: 26px;
+  text-align: right;
+  color: var(--dim);
+}
+
+/* MIC BUTTON */
+#mic-btn {
+  width: 100%;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.55rem;
+  letter-spacing: 2px;
+  padding: 7px;
+  border: 1px solid var(--p1);
+  background: transparent;
+  color: var(--p1);
+  cursor: pointer;
+  text-transform: uppercase;
+  transition: all 0.2s;
+  margin-top: 8px;
+}
+#mic-btn:hover    { background: rgba(0,255,204,0.08); }
+#mic-btn.active   { background: rgba(0,255,204,0.12); animation: pulse-border 1.2s infinite; }
+#mic-btn.sim-mode { border-color: var(--neutral); color: var(--neutral); }
+@keyframes pulse-border {
+  0%,100% { box-shadow: 0 0 0 0 rgba(0,255,204,0.3); }
+  50%      { box-shadow: 0 0 0 4px rgba(0,255,204,0); }
+}
+
+/* LEADERBOARD */
+.lb-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.52rem;
+  letter-spacing: 1px;
+  padding: 3px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+.lb-row .lb-player { color: #fff; }
+.lb-row .lb-game   { color: var(--dim); font-size: 0.44rem; }
+.lb-row .lb-score  { color: var(--neutral); }
+
+/* CHAIN LOG */
+#chain-log {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 12px;
+  font-size: 0.48rem;
+  letter-spacing: 0.5px;
+  line-height: 1.9;
+}
+#chain-log::-webkit-scrollbar { width: 2px; }
+#chain-log::-webkit-scrollbar-thumb { background: var(--border); }
+
+.chain-entry {
+  display: flex;
+  gap: 6px;
+  padding: 1px 0;
+  border-left: 2px solid transparent;
+  padding-left: 5px;
+  animation: fadeIn 0.3s ease;
+}
+@keyframes fadeIn { from { opacity:0; transform: translateX(-4px); } to { opacity:1; transform:none; } }
+
+.chain-entry.sim3   { border-left-color: var(--sim3); }
+.chain-entry.ruliad { border-left-color: var(--ruliad); }
+.chain-entry.cross  { border-left-color: var(--neutral); }
+.chain-entry.p2     { border-left-color: var(--p2); }
+.chain-entry.global { border-left-color: #fff; }
+
+.chain-block { color: rgba(255,255,255,0.3); flex-shrink:0; }
+.chain-game  { flex-shrink:0; }
+.chain-game.sim3   { color: var(--sim3); }
+.chain-game.ruliad { color: var(--ruliad); }
+.chain-game.cross  { color: var(--neutral); }
+.chain-type  { color: #fff; flex-shrink:0; }
+.chain-who   { color: var(--dim); }
+
+/* BOTTOM BAR */
+#bottom-bar {
+  grid-column: 1 / 3;
+  background: var(--surface);
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 1px;
+  background: var(--border);
+}
+
+.bottom-cell {
+  background: var(--surface);
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.bottom-cell-title {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 0.7rem;
+  letter-spacing: 3px;
+  color: #fff;
+}
+
+/* PROVENANCE DISPLAY */
+.prov-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.5rem;
+  letter-spacing: 1px;
+  color: var(--dim);
+  padding: 2px 0;
+}
+.prov-row .prov-val { color: var(--p1); }
+.prov-row .prov-val.p2 { color: var(--p2); }
+.prov-row .prov-val.neutral { color: var(--neutral); }
+
+/* REPLAY BUTTON */
+.replay-btn {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.48rem;
+  letter-spacing: 1px;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--dim);
+  cursor: pointer;
+  text-transform: uppercase;
+  transition: all 0.15s;
+  align-self: flex-start;
+}
+.replay-btn:hover { border-color: var(--neutral); color: var(--neutral); }
+
+/* WAVEFORM */
+#waveform { width:100%; height:36px; }
+
+/* CROSS-GAME EVENT TICKER */
+#cross-ticker {
+  font-size: 0.5rem;
+  letter-spacing: 1px;
+  color: var(--neutral);
+  min-height: 14px;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.tick-msg { animation: tickIn 0.2s ease; }
+@keyframes tickIn { from{opacity:0;transform:translateY(4px)} to{opacity:1;transform:none} }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- HEADER -->
+  <div id="header">
+    <div>
+      <h1>RULIARDS // COMMAND</h1>
+    </div>
+    <div class="status-row">
+      <div><span class="status-dot" id="dot-oracle"></span><span class="status-label">ORACLE <span id="stat-chain">0</span> BLK</span></div>
+      <div><span class="status-dot" id="dot-mic"></span><span class="status-label">HARMONIC <span id="stat-mode">OFFLINE</span></span></div>
+      <div><span class="status-dot warn"></span><span class="status-label">P1 <span>ACTIVE</span></span></div>
+      <div><span class="status-dot" id="dot-p2"></span><span class="status-label">P2 <span id="stat-p2">WAITING</span></span></div>
+      <div><span class="status-dot warn"></span><span class="status-label">TABS <span id="stat-tabs">1</span></span></div>
+    </div>
+  </div>
+
+  <!-- SIM3COLTS FRAME -->
+  <div class="game-frame-wrap" id="wrap-sim3">
+    <div class="game-label sim3">SIM3COLTS</div>
+    <div class="cross-flash sim3-flash" id="flash-sim3"></div>
+    <iframe id="frame-sim3" src="sim3colts/index.html" allow="microphone"></iframe>
+  </div>
+
+  <!-- RETRO RULIAD FRAME -->
+  <div class="game-frame-wrap" id="wrap-ruliad">
+    <div class="game-label ruliad">RETRO RULIAD</div>
+    <div class="cross-flash ruliad-flash" id="flash-ruliad"></div>
+    <iframe id="frame-ruliad" src="retro-ruliad/index.html" allow="microphone"></iframe>
+  </div>
+
+  <!-- RIGHT PANEL -->
+  <div id="right-panel">
+
+    <!-- AUDIO -->
+    <div class="panel-section">
+      <div class="panel-title">HARMONIC SUNRISE</div>
+      <div class="meter-row"><span class="meter-key">AMPLITUDE</span><div class="meter-track"><div class="meter-fill amp" id="m-amp"></div></div><span class="meter-val" id="v-amp">0%</span></div>
+      <div class="meter-row"><span class="meter-key">BASS</span><div class="meter-track"><div class="meter-fill bass" id="m-bass"></div></div><span class="meter-val" id="v-bass">0%</span></div>
+      <div class="meter-row"><span class="meter-key">MID</span><div class="meter-track"><div class="meter-fill mid" id="m-mid"></div></div><span class="meter-val" id="v-mid">0%</span></div>
+      <div class="meter-row"><span class="meter-key">TREBLE</span><div class="meter-track"><div class="meter-fill treble" id="m-treble"></div></div><span class="meter-val" id="v-treble">0%</span></div>
+      <canvas id="waveform"></canvas>
+      <button id="mic-btn" onclick="activateAudio()">[ CLICK TO ACTIVATE MIC ]</button>
+    </div>
+
+    <!-- LEADERBOARD -->
+    <div class="panel-section">
+      <div class="panel-title">PROVENANCE BOARD</div>
+      <div id="leaderboard-rows">
+        <div class="lb-row"><span class="lb-player">—</span><span class="lb-game">WAITING</span><span class="lb-score">0</span></div>
+      </div>
+    </div>
+
+    <!-- CHAIN LOG -->
+    <div class="panel-title" style="padding:8px 12px 0; flex-shrink:0">ORACLE CHAIN</div>
+    <div id="chain-log"></div>
+
+  </div>
+
+  <!-- BOTTOM BAR -->
+  <div id="bottom-bar">
+
+    <!-- CROSS-GAME EVENTS -->
+    <div class="bottom-cell">
+      <div class="bottom-cell-title">CROSS-GAME CAUSALITY</div>
+      <div id="cross-ticker">WAITING FOR EVENTS...</div>
+      <div class="prov-row"><span>SIM3 → RULIAD</span><span class="prov-val" id="prov-s2r">0 events</span></div>
+      <div class="prov-row"><span>RULIAD → SIM3</span><span class="prov-val" id="prov-r2s">0 events</span></div>
+    </div>
+
+    <!-- FIRST EVENTS PROVENANCE -->
+    <div class="bottom-cell">
+      <div class="bottom-cell-title">WHO WAS FIRST</div>
+      <div class="prov-row"><span>FIRST POCKET</span><span class="prov-val" id="first-pocket">—</span></div>
+      <div class="prov-row"><span>FIRST P2 SHOT</span><span class="prov-val p2" id="first-p2">—</span></div>
+      <div class="prov-row"><span>FIRST DIM SHIFT</span><span class="prov-val neutral" id="first-dim">—</span></div>
+      <div class="prov-row"><span>FIRST TELEPORT</span><span class="prov-val" id="first-tele">—</span></div>
+    </div>
+
+    <!-- GHOST STATE -->
+    <div class="bottom-cell">
+      <div class="bottom-cell-title">GHOST STATE</div>
+      <div class="prov-row"><span>P1 CONFIDENCE</span><span class="prov-val" id="ghost-p1-conf">0%</span></div>
+      <div class="prov-row"><span>P2 CONFIDENCE</span><span class="prov-val p2" id="ghost-p2-conf">0%</span></div>
+      <div class="prov-row"><span>P2 LAST GAME</span><span class="prov-val neutral" id="ghost-p2-game">—</span></div>
+      <div class="prov-row"><span>BLOCK HEIGHT</span><span class="prov-val" id="ghost-block">0</span></div>
+      <button class="replay-btn" onclick="requestSnapshot()">REQUEST SNAPSHOT</button>
+    </div>
+
+  </div>
+
+</div>
+
+<script src="../oracle-harmonic/oracle-harmonic.js"></script>
+<script>
+
+// ============================================================
+// DASHBOARD — RULIARDS COMMAND
+// ============================================================
+
+const instanceId = OracleHarmonic.init('dashboard', null);
+let audioStarted = false;
+
+let s2rCount = 0, r2sCount = 0;
+let firstPocket = null, firstP2 = null, firstDim = null, firstTele = null;
+
+// Waveform
+const wfCanvas = document.getElementById('waveform');
+const wfCtx = wfCanvas.getContext('2d');
+wfCanvas.width = wfCanvas.offsetWidth * devicePixelRatio || 256;
+wfCanvas.height = 36 * devicePixelRatio || 36;
+let wfPhase = 0;
+
+// ---- AUDIO ----
+async function activateAudio() {
+  if (audioStarted) return;
+  audioStarted = true;
+  const btn = document.getElementById('mic-btn');
+  btn.textContent = '[ INITIALISING... ]';
+
+  const mode = await OracleHarmonic.startAudio();
+  if (mode === 'mic') {
+    btn.textContent = '[ MIC ACTIVE ]';
+    btn.classList.add('active');
+    document.getElementById('dot-mic').classList.add('on');
+    document.getElementById('stat-mode').textContent = 'MIC';
+  } else {
+    btn.textContent = '[ SIMULATION MODE ]';
+    btn.classList.add('sim-mode');
+    document.getElementById('dot-mic').classList.add('on');
+    document.getElementById('stat-mode').textContent = 'SIM';
+  }
+}
+
+// ---- P2 TRIGGER ----
+OracleHarmonic.onP2Trigger((audioState, evt) => {
+  document.getElementById('dot-p2').classList.add('on');
+  document.getElementById('stat-p2').textContent = 'FIRING';
+  flashFrame('sim3');
+  flashFrame('ruliad');
+  setTimeout(() => {
+    document.getElementById('stat-p2').textContent = 'READY';
+  }, 400);
+});
+
+// ---- CHAIN EVENTS ----
+OracleHarmonic.onEvent((evt) => {
+  appendChainEntry(evt);
+  updateProvenance(evt);
+  updateFirsts(evt);
+  document.getElementById('stat-chain').textContent = OracleHarmonic.blockHeight;
+  document.getElementById('dot-oracle').classList.add('on');
+});
+
+// ---- CROSS-GAME ----
+OracleHarmonic.onCrossGame((evt) => {
+  const msg = `${evt.sourceGameId?.toUpperCase() || '?'} → ${evt.gameId?.toUpperCase() || '?'} : ${evt.type}`;
+  showCrossTick(msg);
+  if (evt.sourceGameId === 'sim3colts') {
+    s2rCount++;
+    document.getElementById('prov-s2r').textContent = s2rCount + ' events';
+    flashFrame('ruliad');
+  } else if (evt.sourceGameId === 'retro-ruliad') {
+    r2sCount++;
+    document.getElementById('prov-r2s').textContent = r2sCount + ' events';
+    flashFrame('sim3');
+  }
+});
+
+// ---- LEADERBOARD ----
+OracleHarmonic.onLeaderboard((board) => {
+  const el = document.getElementById('leaderboard-rows');
+  el.innerHTML = '';
+  board.slice(0, 6).forEach((entry, i) => {
+    const row = document.createElement('div');
+    row.className = 'lb-row';
+    const gameColor = entry.gameId === 'sim3colts' ? 'var(--sim3)' : 'var(--ruliad)';
+    row.innerHTML = `
+      <span class="lb-player" style="color:${entry.playerId==='p1'?'var(--p1)':'var(--p2)'}">
+        ${i+1}. ${entry.playerId.toUpperCase()}
+      </span>
+      <span class="lb-game" style="color:${gameColor}">${entry.gameId}</span>
+      <span class="lb-score">${entry.score}</span>
+    `;
+    el.appendChild(row);
+  });
+});
+
+// ---- RECONNECT ----
+OracleHarmonic.reconnect((count) => {
+  if (count > 0) {
+    document.getElementById('stat-tabs').textContent =
+      parseInt(document.getElementById('stat-tabs').textContent || '1') + 1;
+  }
+});
+
+// ---- CHAIN LOG ----
+function appendChainEntry(evt) {
+  const log = document.getElementById('chain-log');
+  const entry = document.createElement('div');
+
+  let gameClass = 'global';
+  let gameLabel = evt.gameId || '?';
+  if (evt.gameId === 'sim3colts')    { gameClass = 'sim3';   gameLabel = 'SIM3'; }
+  if (evt.gameId === 'retro-ruliad') { gameClass = 'ruliad'; gameLabel = 'RLAD'; }
+  if (evt.gameId === '*')            { gameClass = 'p2';     gameLabel = 'ALL'; }
+  if (evt.type?.includes('EFFECT') || evt.causedBy) gameClass = 'cross';
+
+  const block = String(evt.block || 0).padStart(4,'0');
+  entry.className = `chain-entry ${gameClass}`;
+  entry.innerHTML = `
+    <span class="chain-block">#${block}</span>
+    <span class="chain-game ${gameClass}">${gameLabel}</span>
+    <span class="chain-type">${evt.type}</span>
+    <span class="chain-who">${evt.playerId || ''}</span>
+  `;
+  log.appendChild(entry);
+  log.scrollTop = log.scrollHeight;
+  if (log.children.length > 120) log.removeChild(log.children[0]);
+}
+
+// ---- PROVENANCE / FIRSTS ----
+function updateFirsts(evt) {
+  if (evt.type === 'POCKET' && !firstPocket) {
+    firstPocket = evt;
+    document.getElementById('first-pocket').textContent =
+      `${evt.playerId} / ${evt.gameId?.slice(0,4)} #${evt.block}`;
+  }
+  if (evt.type === 'P2_AUDIO_TRIGGER' && !firstP2) {
+    firstP2 = evt;
+    document.getElementById('first-p2').textContent = `blk #${evt.block}`;
+  }
+  if (evt.type === 'DIMENSION_SHIFT' && !firstDim) {
+    firstDim = evt;
+    document.getElementById('first-dim').textContent =
+      `${evt.playerId} / #${evt.block}`;
+  }
+  if (evt.type === 'TELEPORT' && !firstTele) {
+    firstTele = evt;
+    document.getElementById('first-tele').textContent =
+      `${evt.playerId} / #${evt.block}`;
+  }
+}
+
+function updateProvenance(evt) {
+  // Ghost state
+  const g1 = OracleHarmonic.getGhost('p1');
+  const g2 = OracleHarmonic.getGhost('p2');
+  document.getElementById('ghost-p1-conf').textContent = Math.round(g1.confidence * 100) + '%';
+  document.getElementById('ghost-p2-conf').textContent = Math.round(g2.confidence * 100) + '%';
+  document.getElementById('ghost-p2-game').textContent = g2.lastGameId || '—';
+  document.getElementById('ghost-block').textContent = OracleHarmonic.blockHeight;
+}
+
+// ---- CROSS TICKER ----
+function showCrossTick(msg) {
+  const el = document.getElementById('cross-ticker');
+  el.innerHTML = `<span class="tick-msg">⟶ ${msg}</span>`;
+}
+
+// ---- FRAME FLASH ----
+function flashFrame(which) {
+  const el = document.getElementById(`flash-${which}`);
+  if (!el) return;
+  el.style.opacity = '1';
+  setTimeout(() => { el.style.opacity = '0'; }, 250);
+}
+
+// ---- SNAPSHOT ----
+function requestSnapshot() {
+  OracleHarmonic.requestSpectateSnapshot((snap) => {
+    appendChainEntry({
+      block: snap.blockHeight,
+      gameId: 'dashboard',
+      playerId: 'spectator',
+      type: 'SNAPSHOT',
+      data: { chainLen: snap.chain?.length }
+    });
+  });
+}
+
+// ---- AUDIO METER + WAVEFORM LOOP ----
+function uiLoop() {
+  const state = OracleHarmonic.getAudioState();
+
+  document.getElementById('m-amp').style.width    = (state.amplitude * 100) + '%';
+  document.getElementById('m-bass').style.width   = (state.bass * 100) + '%';
+  document.getElementById('m-mid').style.width    = (state.mid * 100) + '%';
+  document.getElementById('m-treble').style.width = (state.treble * 100) + '%';
+  document.getElementById('v-amp').textContent    = Math.round(state.amplitude * 100) + '%';
+  document.getElementById('v-bass').textContent   = Math.round(state.bass * 100) + '%';
+  document.getElementById('v-mid').textContent    = Math.round(state.mid * 100) + '%';
+  document.getElementById('v-treble').textContent = Math.round(state.treble * 100) + '%';
+
+  // Waveform
+  wfPhase += 0.06;
+  const W = wfCanvas.width, H = wfCanvas.height;
+  wfCtx.clearRect(0, 0, W, H);
+  wfCtx.fillStyle = 'rgba(0,0,0,0.6)';
+  wfCtx.fillRect(0, 0, W, H);
+
+  wfCtx.beginPath();
+  wfCtx.strokeStyle = `rgba(0,255,204,${0.4 + state.amplitude * 0.5})`;
+  wfCtx.lineWidth = 1.5;
+  for (let x = 0; x < W; x++) {
+    const t = x / W;
+    const y = H/2 + Math.sin(t * 12 + wfPhase) * state.bass * 10
+                  + Math.sin(t * 25 + wfPhase * 1.3) * state.mid * 7
+                  + Math.sin(t * 50 + wfPhase * 2.1) * state.treble * 4;
+    if (x === 0) wfCtx.moveTo(x, y);
+    else wfCtx.lineTo(x, y);
+  }
+  wfCtx.stroke();
+
+  requestAnimationFrame(uiLoop);
+}
+
+uiLoop();
+
+// Initial chain entry
+appendChainEntry({
+  block: 0, gameId: 'dashboard', playerId: 'system',
+  type: 'BOOT', data: {}
+});
+
+</script>
+</body>
+</html>
