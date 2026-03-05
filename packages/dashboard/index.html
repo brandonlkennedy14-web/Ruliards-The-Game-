@@ -1,0 +1,824 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Retro Ruliad Billiards</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+        body {
+            background-color: #000;
+            color: #0f0;
+            font-family: 'Press Start 2P', cursive;
+            margin: 0;
+            height: 100vh;
+            width: 100vw;
+            overflow: hidden;
+            cursor: crosshair;
+        }
+        canvas {
+            image-rendering: pixelated;
+            display: block;
+            position: absolute;
+            top: 0; left: 0;
+            width: 100vw; height: 100vh;
+            z-index: 1;
+        }
+        .hud {
+            position: absolute;
+            top: 15px; left: 50%;
+            transform: translateX(-50%);
+            width: 95%; max-width: 1000px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 10px;
+            text-shadow: 3px 3px 0 #000, -1px -1px 0 #000;
+            color: #0ff;
+            z-index: 10;
+            background: rgba(0,0,0,0.6);
+            padding: 10px;
+            border: 2px solid #0ff;
+            flex-wrap: wrap; gap: 10px;
+        }
+        .hud span { flex:1; text-align:center; white-space:nowrap; }
+        .hud-highlight { color:#f0f; }
+        .target-container {
+            display:flex; align-items:center; gap:10px;
+            background:rgba(255,255,255,0.1);
+            padding:4px 10px; border-radius:4px; border:1px solid #0ff;
+        }
+        #targetCanvas { width:120px; height:30px; }
+        .scanlines {
+            position:absolute; top:0; left:0; width:100vw; height:100vh;
+            background:linear-gradient(to bottom,rgba(255,255,255,0),rgba(255,255,255,0) 50%,rgba(0,0,0,0.3) 50%,rgba(0,0,0,0.3));
+            background-size:100% 4px;
+            pointer-events:none; z-index:5;
+        }
+        /* Cross-game overlay */
+        #cross-overlay {
+            position:absolute; inset:0;
+            pointer-events:none; opacity:0; z-index:8;
+            transition: opacity 0.15s;
+        }
+        /* P2 ghost ball indicator */
+        #p2-ghost-hud {
+            position:absolute; bottom:40px; right:15px;
+            font-size:8px; color:#ff3366; z-index:10;
+            text-shadow:2px 2px 0 #000;
+            opacity:0; transition:opacity 0.3s;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="hud" id="ui-panel">
+        <span>DIM: <span id="ui-dim" class="hud-highlight">1</span></span>
+        <span>BOUNCES: <span id="ui-winding" class="hud-highlight">0</span></span>
+        <span>HARMONIC: <span id="ui-harmonic" class="hud-highlight">0.0</span></span>
+        <span>BEST: <span id="ui-best" class="hud-highlight">0</span></span>
+        <div class="target-container">
+            <span>SINK SEQUENCE:</span>
+            <canvas id="targetCanvas" width="120" height="30"></canvas>
+        </div>
+        <span class="hud-highlight">DRAG TO SHOOT</span>
+        <span id="ui-oracle" style="color:#00ffcc;font-size:8px">ORACLE: —</span>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+    <div class="scanlines"></div>
+    <div id="cross-overlay"></div>
+    <div id="p2-ghost-hud">P2 ORACLE GHOST</div>
+
+    <script src="../oracle-harmonic/oracle-harmonic.js"></script>
+    <script>
+        // ============================================================
+        // RETRO RULIAD BILLIARDS + 0 PING ORACLE + HARMONIC SUNRISE
+        // ============================================================
+
+        const canvas      = document.getElementById('gameCanvas');
+        const ctx         = canvas.getContext('2d');
+        const targetCanvas = document.getElementById('targetCanvas');
+        const tCtx        = targetCanvas.getContext('2d');
+
+        const ruliadCanvas = document.createElement('canvas');
+        const rCtx        = ruliadCanvas.getContext('2d');
+        const CA_PIXEL    = 8;
+        let CA_W = 1, CA_H = 1, caData;
+        let bgRowColors   = new Uint8Array(0);
+
+        const boardCanvas = document.createElement('canvas');
+        const bCtx        = boardCanvas.getContext('2d');
+        const B_CA_SIZE   = 64;
+        boardCanvas.width = B_CA_SIZE; boardCanvas.height = B_CA_SIZE;
+        let bData     = new Uint8Array(B_CA_SIZE * B_CA_SIZE);
+        let bDataNext = new Uint8Array(B_CA_SIZE * B_CA_SIZE);
+        let trailData = new Uint8Array(B_CA_SIZE * B_CA_SIZE);
+
+        const palettes = [
+            [[0,255,255],[255,0,255],[255,255,0],[0,0,255]],
+            [[0,255,0],[128,0,128],[0,128,255],[255,165,0]],
+            [[255,0,100],[0,255,100],[100,0,255],[255,255,255]],
+            [[255,50,0],[0,255,200],[200,0,255],[255,255,0]]
+        ];
+        let currentPalette  = palettes[0];
+        let bgPaletteShift  = 0;
+        const munkerPairs   = [['#00FFFF','#FF00FF'],['#800080','#00FF00'],['#0000FF','#FFFF00'],['#FF0000','#0000FF']];
+        let currentMunkerPair = munkerPairs[0];
+        let targetMunkerIndex = 0;
+
+        let WIDTH = window.innerWidth || 800;
+        let HEIGHT = window.innerHeight || 600;
+        let boardShape = { type:'POLYGON', cx:0, cy:0, r:0, vertices:[], pockets:[] };
+        let boardRect  = { x:0, y:0, size:0 };
+        let currentRule = 0, bgRule = 30, frameCount = 0;
+
+        let gameState = {
+            dimension:1, bounces:0, best:0,
+            state:'PLAYING', transitionTimer:0, transitionType:'NEXT',
+            sinkHole:{x:0,y:0}, sinkingBall:null, targetsSunk:0
+        };
+        let impactRipples = [];
+
+        // Cross-game effects
+        let pendingForcePulse  = null;
+        let pendingWormhole    = null;
+        let psychosisLevel     = 0;
+        let bounceChainStart   = 0;
+
+        // P2 ghost ball (Oracle-driven autonomous player)
+        let p2Ghost = { x: 0, y: 0, vx: 0, vy: 0, active: false, cooldown: 0 };
+
+        // ---- ORACLE INIT ----
+        const instanceId = OracleHarmonic.init('retro-ruliad');
+
+        // Harmonic Sunrise → P2 ghost ball
+        OracleHarmonic.onP2Trigger((audioState, evt) => {
+            if (gameState.state !== 'PLAYING') return;
+
+            // P2 ghost shoots the white ball based on audio
+            const whiteBall = balls.find(b => b.type === 'WHITE' && !b.isSinking && !b.dead);
+            if (!whiteBall || p2Ghost.cooldown > 0) return;
+
+            // Ghost uses oracle prediction + audio to pick direction
+            const ghost = OracleHarmonic.getGhost('p2');
+            let targetBall = balls.find(b => b.type === 'TARGET' && !b.dead && !b.isSinking);
+
+            let angle;
+            if (targetBall) {
+                // Aim toward nearest target, biased by dominant frequency
+                angle = Math.atan2(targetBall.y - whiteBall.y, targetBall.x - whiteBall.x);
+                angle += (audioState.dominant - 0.5) * 0.8; // audio shifts aim
+                // Ghost confidence reduces aim error
+                if (ghost.confidence > 0.4) angle += (Math.random()-0.5) * (1 - ghost.confidence) * 0.5;
+            } else {
+                angle = Math.random() * Math.PI * 2;
+            }
+
+            const speed = 6 + audioState.bass * 8 + audioState.amplitude * 4;
+            whiteBall.vx += Math.cos(angle) * speed * 0.4;
+            whiteBall.vy += Math.sin(angle) * speed * 0.4;
+
+            p2Ghost.x = whiteBall.x;
+            p2Ghost.y = whiteBall.y;
+            p2Ghost.active = true;
+            p2Ghost.cooldown = 90;
+
+            OracleHarmonic.broadcast('P2_MOVE', 'p2', {
+                x: whiteBall.x, y: whiteBall.y,
+                angle, speed,
+                confidence: ghost.confidence
+            });
+
+            // Show P2 ghost HUD briefly
+            const ghud = document.getElementById('p2-ghost-hud');
+            ghud.style.opacity = '1';
+            ghud.textContent = `P2 SHOT: ${(audioState.amplitude*100).toFixed(0)}% AMP`;
+            setTimeout(() => { ghud.style.opacity = '0'; }, 800);
+        });
+
+        // Cross-game effects FROM sim3colts
+        OracleHarmonic.onCrossGame((evt) => {
+            if (evt.gameId !== 'retro-ruliad') return;
+
+            if (evt.type === 'FORCE_PULSE') {
+                pendingForcePulse = evt.data;
+                showCrossEffect('rgba(0,170,255,0.25)');
+            }
+            if (evt.type === 'WORMHOLE') {
+                pendingWormhole = { ...evt.data, timer: evt.data.duration || 120 };
+                showCrossEffect('rgba(255,204,0,0.2)');
+            }
+            if (evt.type === 'PSYCHOSIS') {
+                psychosisLevel = Math.min(1, psychosisLevel + 0.3);
+                showCrossEffect('rgba(255,51,102,0.25)');
+            }
+        });
+
+        OracleHarmonic.onEvent((evt) => {
+            document.getElementById('ui-oracle').textContent =
+                `BLK:${OracleHarmonic.blockHeight}`;
+        });
+
+        // ---- AUDIO (init on first interaction) ----
+        let audioStarted = false;
+        async function maybeStartAudio() {
+            if (audioStarted) return;
+            audioStarted = true;
+            await OracleHarmonic.startAudio();
+        }
+        document.addEventListener('click', maybeStartAudio, { once: true });
+        document.addEventListener('touchstart', maybeStartAudio, { once: true });
+
+        function showCrossEffect(color) {
+            const el = document.getElementById('cross-overlay');
+            el.style.background = `radial-gradient(ellipse, ${color} 0%, transparent 70%)`;
+            el.style.opacity = '1';
+            setTimeout(() => { el.style.opacity = '0'; }, 500);
+        }
+
+        // ---- MOUSE / TOUCH ----
+        let mouse = { x:0, y:0, isDragging:false, startX:0, startY:0 };
+
+        function handlePointerDown(e) {
+            maybeStartAudio();
+            mouse.isDragging = true;
+            mouse.startX = e.touches ? e.touches[0].clientX : e.clientX;
+            mouse.startY = e.touches ? e.touches[0].clientY : e.clientY;
+            mouse.x = mouse.startX; mouse.y = mouse.startY;
+        }
+        function handlePointerMove(e) {
+            if (!mouse.isDragging) return;
+            mouse.x = e.touches ? e.touches[0].clientX : e.clientX;
+            mouse.y = e.touches ? e.touches[0].clientY : e.clientY;
+        }
+        function handlePointerUp(e) {
+            if (mouse.isDragging) {
+                let dx = mouse.startX - mouse.x, dy = mouse.startY - mouse.y;
+                let whiteBall = balls.find(b => b.type==='WHITE');
+                if (whiteBall && !whiteBall.isSinking && gameState.state==='PLAYING') {
+                    let dist = Math.hypot(dx,dy);
+                    if (dist>300){dx=(dx/dist)*300;dy=(dy/dist)*300;}
+                    whiteBall.vx += dx*0.12;
+                    whiteBall.vy += dy*0.12;
+                    OracleHarmonic.broadcast('P1_SHOT','p1',{
+                        x:whiteBall.x, y:whiteBall.y,
+                        dx, dy, power:dist
+                    });
+                }
+                mouse.isDragging = false;
+            }
+        }
+        canvas.addEventListener('mousedown', handlePointerDown);
+        canvas.addEventListener('mousemove', handlePointerMove);
+        window.addEventListener('mouseup', handlePointerUp);
+        canvas.addEventListener('touchstart', handlePointerDown,{passive:true});
+        canvas.addEventListener('touchmove', handlePointerMove,{passive:true});
+        window.addEventListener('touchend', handlePointerUp);
+
+        // ---- GEOMETRY ----
+        function generateGeometry() {
+            const cx=WIDTH/2, cy=HEIGHT/2+25;
+            const scaleFactor=0.30+Math.random()*0.18;
+            const R=Math.max(10,Math.min(WIDTH,HEIGHT)*scaleFactor);
+            let verts=[], pockets=[];
+            const types=['POLYGON','STAR','HYPERBOLIC_SQUARE','HYPOTROCHOID'];
+            const type=types[Math.floor(Math.random()*types.length)];
+            const rotOffset=Math.random()*Math.PI*2;
+
+            if (type==='HYPERBOLIC_SQUARE') {
+                const resolution=200,sqBaseR=R*(0.45+Math.random()*0.3),lobeStrength=R*(0.2+Math.random()*0.4),lobeCount=Math.floor(Math.random()*4)*2+2;
+                for(let i=0;i<resolution;i++){
+                    let theta=(i/resolution)*Math.PI*2,cosT=Math.abs(Math.cos(theta)),sinT=Math.abs(Math.sin(theta));
+                    let rSq=sqBaseR/Math.max(cosT,sinT),rLobe=R*0.5+lobeStrength*Math.cos(lobeCount*theta);
+                    let rFinal=Math.max(rSq,rLobe);
+                    verts.push({x:cx+rFinal*Math.cos(theta+rotOffset),y:cy+rFinal*Math.sin(theta+rotOffset)});
+                }
+                for(let i=0;i<4;i++){let angle=(i*Math.PI/2)+Math.PI/4;pockets.push({x:cx+(sqBaseR/Math.cos(Math.PI/4))*Math.cos(angle+rotOffset),y:cy+(sqBaseR/Math.cos(Math.PI/4))*Math.sin(angle+rotOffset)});}
+            } else if (type==='POLYGON') {
+                let sides=Math.floor(Math.random()*7)+3;
+                for(let i=0;i<sides;i++){let angle=rotOffset+(i*2*Math.PI/sides),px=cx+R*Math.cos(angle),py=cy+R*Math.sin(angle);verts.push({x:px,y:py});pockets.push({x:px,y:py});}
+            } else if (type==='STAR') {
+                let sides=Math.floor(Math.random()*4)+4,innerRatio=0.48+Math.random()*0.32;
+                const BALL_D=28,minGap=BALL_D*3,gapWidth=2*R*innerRatio*Math.sin(Math.PI/sides);
+                if(gapWidth<minGap) innerRatio=Math.min(0.85,minGap/(2*R*Math.sin(Math.PI/sides)));
+                for(let i=0;i<sides*2;i++){let r=i%2===0?R:R*innerRatio,angle=rotOffset+(i*Math.PI)/sides,px=cx+r*Math.cos(angle),py=cy+r*Math.sin(angle);verts.push({x:px,y:py});if(i%2===0)pockets.push({x:px,y:py});}
+            } else {
+                const numLobes=Math.floor(Math.random()*7)+3,resolution=200,hr=R*(0.4+Math.random()*0.35),pr=hr*(numLobes-1)/numLobes,d=R*(0.2+Math.random()*0.7);
+                let maxDist=0;
+                for(let i=0;i<resolution;i++){
+                    let theta=(i/resolution)*Math.PI*2*numLobes;
+                    let x=(hr-pr)*Math.cos(theta)+d*Math.cos(((hr-pr)/pr)*theta),y=(hr-pr)*Math.sin(theta)-d*Math.sin(((hr-pr)/pr)*theta);
+                    let rotX=x*Math.cos(rotOffset)-y*Math.sin(rotOffset),rotY=x*Math.sin(rotOffset)+y*Math.cos(rotOffset);
+                    verts.push({x:cx+rotX,y:cy+rotY});
+                    let dist=Math.hypot(rotX,rotY);if(dist>maxDist)maxDist=dist;
+                }
+                for(let i=0;i<verts.length;i++){let p=verts[i];if(Math.hypot(p.x-cx,p.y-cy)>maxDist*0.95&&!pockets.some(pk=>Math.hypot(pk.x-p.x,pk.y-p.y)<R*0.2))pockets.push({x:p.x,y:p.y});}
+            }
+            boardShape={type,cx,cy,r:R,vertices:verts,pockets};
+            boardRect={x:cx-R*1.8,y:cy-R*1.8,size:R*3.6};
+        }
+
+        function drawShapePath(ctx, shape, applyAudio=false) {
+            ctx.beginPath();
+            if(shape.vertices.length===0)return;
+            const audio = OracleHarmonic.getAudioState();
+            for(let i=0;i<shape.vertices.length;i++){
+                let v=shape.vertices[i],px=v.x,py=v.y;
+                if(applyAudio&&audio.amplitude>0.15){
+                    let bin=Math.floor((i/shape.vertices.length)*(64));
+                    let force=(audio.amplitude*0.5)*20;
+                    let angle=Math.atan2(v.y-shape.cy,v.x-shape.cx);
+                    px+=Math.cos(angle)*force; py+=Math.sin(angle)*force;
+                }
+                if(i===0)ctx.moveTo(px,py); else ctx.lineTo(px,py);
+            }
+            ctx.closePath();
+        }
+
+        function resize() {
+            WIDTH=canvas.width=window.innerWidth||320;
+            HEIGHT=canvas.height=window.innerHeight||320;
+            CA_W=Math.max(1,Math.ceil(WIDTH/CA_PIXEL));
+            CA_H=Math.max(1,Math.ceil(HEIGHT/CA_PIXEL));
+            ruliadCanvas.width=CA_W; ruliadCanvas.height=CA_H;
+            caData=new Uint8Array(CA_W*CA_H);
+            bgRowColors=new Uint8Array(CA_H);
+            caData[Math.floor(CA_W/2)]=1;
+            generateGeometry();
+        }
+        window.addEventListener('resize',()=>{resize();initBalls();});
+
+        function updateTargetHUD() {
+            tCtx.clearRect(0,0,120,30);
+            let remaining=4-gameState.targetsSunk;
+            for(let i=0;i<remaining;i++){
+                let cx=15+i*30;
+                tCtx.fillStyle='#888888';tCtx.beginPath();tCtx.arc(cx,15,12,0,Math.PI*2);tCtx.fill();
+                tCtx.fillStyle='#fff';tCtx.beginPath();tCtx.arc(cx,15,6,0,Math.PI*2);tCtx.fill();
+                tCtx.fillStyle='#000';tCtx.beginPath();tCtx.arc(cx,15,2,0,Math.PI*2);tCtx.fill();
+                let colorIndex=(targetMunkerIndex+(4-remaining)+i)%4;
+                let c1=`rgb(${currentPalette[colorIndex].join(',')})`,c2=`rgb(${currentPalette[(colorIndex+2)%4].join(',')})`;
+                tCtx.fillStyle=c1;tCtx.fillRect(cx-15,3,30,4);tCtx.fillRect(cx-15,23,30,4);
+                tCtx.fillStyle=c2;tCtx.fillRect(cx-15,13,30,4);
+            }
+        }
+
+        function triggerTransition(holePoint, type, ballRef) {
+            gameState.state='TRANSITION';
+            gameState.transitionTimer=150;
+            gameState.sinkHole=holePoint;
+            gameState.transitionType=type;
+            gameState.sinkingBall=ballRef;
+            if(gameState.bounces>gameState.best){gameState.best=gameState.bounces;document.getElementById('ui-best').innerText=gameState.best;}
+
+            if (type==='NEXT') {
+                OracleHarmonic.broadcast('DIMENSION_SHIFT','p1',{
+                    dimension:gameState.dimension,
+                    bounces:gameState.bounces,
+                    x:holePoint.x, y:holePoint.y
+                });
+                // Bounce chain cross-game effect
+                if (gameState.bounces > 5) {
+                    OracleHarmonic.broadcast('BOUNCE_CHAIN','p1',{ bounces:gameState.bounces });
+                }
+            }
+        }
+
+        function restartGame() {
+            gameState.dimension=1;gameState.bounces=0;
+            document.getElementById('ui-winding').innerText='0';
+            nextDimension(true);
+        }
+
+        function nextDimension(isReset=false) {
+            if(!isReset) gameState.dimension++;
+            const uiPanel=document.getElementById('ui-panel');
+            if(uiPanel){uiPanel.style.borderColor=isReset?'#f00':'#f0f';setTimeout(()=>uiPanel.style.borderColor='#0ff',300);}
+            generateGeometry();
+            document.getElementById('ui-dim').innerText=`${gameState.dimension} (${boardShape.type})`;
+            currentRule=(currentRule+1)%8;
+            const interestingRules=[30,90,110,150,105,73,22,126,45,169];
+            bgRule=interestingRules[Math.floor(Math.random()*interestingRules.length)];
+            currentPalette=palettes[gameState.dimension%palettes.length];
+            currentMunkerPair=munkerPairs[gameState.dimension%munkerPairs.length];
+            gameState.targetsSunk=0;targetMunkerIndex=Math.floor(Math.random()*4);
+            updateTargetHUD();
+            caData.fill(0);trailData.fill(0);bData.fill(0);bgRowColors.fill(bgPaletteShift);
+            impactRipples=[];p2Ghost.active=false;
+            if(caData.length>0)caData[Math.floor(CA_W/2)]=1;
+            initBalls();
+            psychosisLevel=Math.max(0,psychosisLevel-0.2);
+        }
+
+        const POCKET_RADIUS=28;
+
+        class Ball {
+            constructor(x,y,vx,vy,radius,type,trueColor){
+                this.x=x;this.y=y;this.vx=vx;this.vy=vy;this.radius=radius;
+                this.type=type;this.trueColor=trueColor;this.angle=0;
+                this.isSinking=false;this.dead=false;this.targetPocket=null;this.lastBounce=0;
+            }
+            update(){
+                if(this.isSinking||this.dead)return;
+                const audio=OracleHarmonic.getAudioState();
+                if(audio.amplitude>0.2){
+                    const dx=this.x-boardShape.cx,dy=this.y-boardShape.cy;
+                    const dist=Math.hypot(dx,dy)||1;
+                    const force=(audio.amplitude*0.008)/(dist*0.01);
+                    this.vx+=(dx/dist)*force;this.vy+=(dy/dist)*force;
+                }
+                // Psychosis
+                if(psychosisLevel>0.1){
+                    this.vx+=(Math.random()-0.5)*psychosisLevel*0.3;
+                    this.vy+=(Math.random()-0.5)*psychosisLevel*0.3;
+                }
+                this.vx*=0.985;this.vy*=0.985;
+                const speed=Math.hypot(this.vx,this.vy);
+                if(speed>18){this.vx=(this.vx/speed)*18;this.vy=(this.vy/speed)*18;}
+                else if(speed<0.05){this.vx=0;this.vy=0;}
+            }
+            draw(ctx){
+                if(this.dead)return;
+                ctx.save();ctx.translate(this.x,this.y);
+                ctx.fillStyle='rgba(0,0,0,0.8)';
+                ctx.beginPath();ctx.arc(4,4,this.radius,0,Math.PI*2);ctx.fill();
+                ctx.rotate(this.angle);
+                ctx.fillStyle=this.trueColor;
+                ctx.beginPath();ctx.arc(0,0,this.radius,0,Math.PI*2);ctx.fill();
+                if(this.type==='BLACK'){
+                    ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(this.radius*0.2,0,this.radius*0.5,0,Math.PI*2);ctx.fill();
+                    ctx.fillStyle='#000';ctx.beginPath();ctx.arc(this.radius*0.2,0,this.radius*0.2,0,Math.PI*2);ctx.fill();
+                } else if(this.type==='WHITE'){
+                    ctx.fillStyle='#eee';ctx.beginPath();ctx.arc(this.radius*0.2,0,this.radius*0.5,0,Math.PI*2);ctx.fill();
+                    ctx.fillStyle='#ccc';ctx.beginPath();ctx.arc(this.radius*0.2,0,this.radius*0.2,0,Math.PI*2);ctx.fill();
+                } else {
+                    ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(this.radius*0.2,0,this.radius*0.5,0,Math.PI*2);ctx.fill();
+                    ctx.fillStyle='#000';ctx.beginPath();ctx.arc(this.radius*0.2,0,this.radius*0.2,0,Math.PI*2);ctx.fill();
+                }
+                ctx.restore();
+            }
+        }
+
+        let balls=[];
+        function initBalls(){
+            const cx=boardShape.cx,cy=boardShape.cy,BALL_R=14;
+            function inscribedRadius(){
+                let minDist=Infinity;const verts=boardShape.vertices;
+                for(let i=0;i<verts.length;i++){
+                    const A=verts[i],B=verts[(i+1)%verts.length],dx=B.x-A.x,dy=B.y-A.y,len2=dx*dx+dy*dy;
+                    if(len2===0)continue;
+                    const t=Math.max(0,Math.min(1,((cx-A.x)*dx+(cy-A.y)*dy)/len2));
+                    const d=Math.hypot(cx-(A.x+t*dx),cy-(A.y+t*dy));
+                    if(d<minDist)minDist=d;
+                }
+                return minDist===Infinity?boardShape.r*0.4:minDist;
+            }
+            const safeR=inscribedRadius();
+            const spread=Math.max(BALL_R*2.5,Math.min(safeR*0.6,55));
+            const whiteDist=Math.min(spread*1.4,safeR*0.75);
+            balls=[
+                new Ball(cx,cy,0,0,BALL_R,'BLACK','#222222'),
+                new Ball(cx-spread,cy-spread,0,0,BALL_R,'TARGET','#888888'),
+                new Ball(cx+spread,cy-spread,0,0,BALL_R,'TARGET','#888888'),
+                new Ball(cx-spread,cy+spread,0,0,BALL_R,'TARGET','#888888'),
+                new Ball(cx+spread,cy+spread,0,0,BALL_R,'TARGET','#888888'),
+                new Ball(cx,cy+whiteDist,0,0,BALL_R,'WHITE','#ffffff')
+            ];
+            updateTargetHUD();
+        }
+
+        function updateBackgroundRuliad(){
+            if(CA_W<=0||CA_H<=0)return;
+            let prevRow=new Uint8Array(CA_W);
+            for(let x=0;x<CA_W;x++)prevRow[x]=caData[(CA_H>1?1:0)*CA_W+x];
+            for(let y=CA_H-1;y>0;y--){for(let x=0;x<CA_W;x++)caData[y*CA_W+x]=caData[(y-1)*CA_W+x];bgRowColors[y]=bgRowColors[y-1];}
+            bgRowColors[0]=bgPaletteShift;
+            const audio=OracleHarmonic.getAudioState();
+            let activeRule=bgRule;
+            if(audio.amplitude>0.15&&audio.dominant>0.05)activeRule=Math.floor(audio.dominant*255);
+            for(let x=0;x<CA_W;x++){
+                const left=prevRow[x===0?CA_W-1:x-1]?4:0,center=prevRow[x]?2:0,right=prevRow[x===CA_W-1?0:x+1]?1:0;
+                caData[x]=(activeRule&(1<<(left+center+right)))?1:0;
+            }
+            if(gameState.state==='PLAYING'){
+                balls.forEach(b=>{if(b.dead)return;let bCaX=Math.floor((b.x/WIDTH)*CA_W);if(bCaX>=0&&bCaX<CA_W)caData[bCaX]=1;});
+                if(p2Ghost.active){let gCaX=Math.floor((p2Ghost.x/WIDTH)*CA_W);if(gCaX>=0&&gCaX<CA_W)caData[gCaX]=1;}
+            }
+            const imgData=rCtx.createImageData(CA_W,CA_H);
+            for(let y=0;y<CA_H;y++){
+                let rowShift=bgRowColors[y]||0;
+                const bgCol=currentPalette[(0+rowShift)%4],fgCol=currentPalette[(2+rowShift)%4];
+                for(let x=0;x<CA_W;x++){
+                    const i=y*CA_W+x,idx=i*4;
+                    if(caData[i]>0){imgData.data[idx]=fgCol[0];imgData.data[idx+1]=fgCol[1];imgData.data[idx+2]=fgCol[2];imgData.data[idx+3]=255;}
+                    else{imgData.data[idx]=Math.floor(bgCol[0]*0.15);imgData.data[idx+1]=Math.floor(bgCol[1]*0.15);imgData.data[idx+2]=Math.floor(bgCol[2]*0.15);imgData.data[idx+3]=255;}
+                }
+            }
+            rCtx.putImageData(imgData,0,0);
+        }
+
+        function updateBoardRuliad(){
+            for(let i=0;i<trailData.length;i++)if(trailData[i]>0)trailData[i]=Math.max(0,trailData[i]-3);
+            const audio=OracleHarmonic.getAudioState();
+            if(audio.amplitude>0.2){
+                for(let y=0;y<B_CA_SIZE;y++)for(let x=0;x<B_CA_SIZE;x++){
+                    let dx=x-B_CA_SIZE/2,dy=y-B_CA_SIZE/2,angle=Math.atan2(dy,dx),dist=Math.hypot(dx,dy);
+                    let bin=Math.floor((Math.abs(angle)/Math.PI)*(64/4));
+                    let amp=0;
+                    // Use audio state instead of raw dataArray
+                    if(bin<8) amp=audio.bass*255; else if(bin<32) amp=audio.mid*255; else amp=audio.treble*255;
+                    if(amp>100&&Math.abs(dist-(amp/255)*(B_CA_SIZE/2))<2)trailData[y*B_CA_SIZE+x]=255;
+                }
+            }
+            const imgData=bCtx.createImageData(B_CA_SIZE,B_CA_SIZE);
+            const t=Math.floor(frameCount/3);
+            const scale=1+(gameState.dimension%3)*0.5;
+            for(let y=0;y<B_CA_SIZE;y++)for(let x=0;x<B_CA_SIZE;x++){
+                let i=y*B_CA_SIZE+x,prevVal=bData[i];
+                let sx=Math.floor((x-B_CA_SIZE/2)/scale),sy=Math.floor((y-B_CA_SIZE/2)/scale);
+                let vMath=0,ruleMod=currentRule%8;
+                if(ruleMod===0)vMath=(sx^sy)^prevVal;
+                else if(ruleMod===1)vMath=(sx&sy)^(prevVal*2);
+                else if(ruleMod===2)vMath=(sx|sy)^prevVal;
+                else if(ruleMod===3)vMath=Math.floor(Math.sqrt(sx*sx+sy*sy))^prevVal;
+                else if(ruleMod===4)vMath=(sx*sx^sy*sy)%Math.max(1,prevVal);
+                else if(ruleMod===5)vMath=(sx*prevVal)^(sy*prevVal);
+                else if(ruleMod===6)vMath=(sx+sy)^(sx-sy)^prevVal;
+                else vMath=Math.abs(sx^sy)*2^prevVal;
+                let val=Math.abs(vMath-t*3+trailData[i]*1.5);
+                bDataNext[i]=val%256;
+                let colorShift=Math.floor(frameCount/15),colorIndex=(Math.floor(bDataNext[i]/64)+colorShift)%4;
+                const c=currentPalette[colorIndex];
+                let r=c[0],g=c[1],b=c[2];
+                if(trailData[i]>200){r=255;g=255;b=0;}else if(trailData[i]>50){r=255;g=0;b=150;}
+                const idx=i*4;imgData.data[idx]=r;imgData.data[idx+1]=g;imgData.data[idx+2]=b;imgData.data[idx+3]=255;
+            }
+            for(let i=0;i<B_CA_SIZE*B_CA_SIZE;i++)bData[i]=bDataNext[i];
+            bCtx.putImageData(imgData,0,0);
+        }
+
+        function drawBoard(){
+            ctx.save();drawShapePath(ctx,boardShape,false);ctx.clip();
+            ctx.imageSmoothingEnabled=false;
+            ctx.drawImage(boardCanvas,boardRect.x,boardRect.y,boardRect.size,boardRect.size);
+            ctx.restore();
+            ctx.strokeStyle='#fff';ctx.lineWidth=4;drawShapePath(ctx,boardShape,true);ctx.stroke();
+        }
+
+        function drawThickMunkerWhite(){
+            ctx.save();drawShapePath(ctx,boardShape);ctx.clip();
+            const stripeH=3,gap=3;
+            for(let y=boardRect.y;y<boardRect.y+boardRect.size;y+=(stripeH+gap)*2){
+                ctx.fillStyle=currentMunkerPair[0];ctx.fillRect(boardRect.x,y,boardRect.size,stripeH);
+                ctx.fillStyle=currentMunkerPair[1];ctx.fillRect(boardRect.x,y+stripeH+gap,boardRect.size,stripeH);
+            }
+            ctx.restore();
+        }
+
+        function drawPockets(){
+            boardShape.pockets.forEach((p,index)=>{
+                ctx.save();ctx.beginPath();ctx.arc(p.x,p.y,POCKET_RADIUS,0,Math.PI*2);ctx.clip();
+                ctx.fillStyle='#000';ctx.fill();
+
+                // Wormhole effect if pending
+                if(pendingWormhole&&pendingWormhole.timer>0){
+                    ctx.fillStyle=`rgba(255,204,0,${pendingWormhole.timer/120*0.4})`;
+                    ctx.fill();
+                }
+
+                if(ruliadCanvas.width>0&&ruliadCanvas.height>0){
+                    ctx.translate(p.x,p.y);ctx.rotate((frameCount*0.005)+(index*Math.PI/4));
+                    ctx.scale(0.4,0.4);ctx.translate(-WIDTH/2,-HEIGHT/2);
+                    ctx.drawImage(ruliadCanvas,0,0,WIDTH,HEIGHT);
+                }
+                ctx.restore();
+                ctx.save();ctx.beginPath();ctx.arc(p.x,p.y,POCKET_RADIUS,0,Math.PI*2);ctx.clip();
+                ctx.beginPath();ctx.arc(p.x,p.y,POCKET_RADIUS+2,0,Math.PI*2);
+                ctx.lineWidth=6;ctx.strokeStyle='#000';ctx.shadowColor='#000';ctx.shadowBlur=10;ctx.stroke();
+                ctx.restore();
+                ctx.beginPath();ctx.arc(p.x,p.y,POCKET_RADIUS,0,Math.PI*2);
+                const fgCol=currentPalette[(2+bgPaletteShift)%4];
+                ctx.strokeStyle=`rgba(${fgCol[0]},${fgCol[1]},${fgCol[2]},0.8)`;ctx.lineWidth=3;ctx.stroke();
+            });
+        }
+
+        // Draw P2 ghost prediction ring
+        function drawP2Ghost(){
+            if(!p2Ghost.active) return;
+            const ghost=OracleHarmonic.getGhost('p2');
+            if(ghost.confidence<0.1) return;
+
+            ctx.save();
+            ctx.beginPath();
+            ctx.arc(p2Ghost.x, p2Ghost.y, 20, 0, Math.PI*2);
+            ctx.strokeStyle=`rgba(255,51,102,${ghost.confidence*0.6})`;
+            ctx.lineWidth=2;
+            ctx.setLineDash([4,4]);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            // Predicted next position
+            if(ghost.predictedDelta) {
+                ctx.beginPath();
+                ctx.arc(ghost.predictedDelta.x||p2Ghost.x, ghost.predictedDelta.y||p2Ghost.y, 8, 0, Math.PI*2);
+                ctx.strokeStyle=`rgba(255,51,102,${ghost.confidence*0.3})`;
+                ctx.lineWidth=1;
+                ctx.stroke();
+            }
+            ctx.restore();
+        }
+
+        function loop(){
+            frameCount++;
+            if(p2Ghost.cooldown>0) p2Ghost.cooldown--;
+            if(psychosisLevel>0) psychosisLevel=Math.max(0,psychosisLevel-0.003);
+
+            // Apply pending cross-game effects
+            if(pendingForcePulse&&gameState.state==='PLAYING'){
+                balls.forEach(b=>{
+                    if(b.dead||b.isSinking)return;
+                    const dx=b.x-boardShape.cx,dy=b.y-boardShape.cy;
+                    const dist=Math.hypot(dx,dy)||1;
+                    b.vx+=(dx/dist)*(pendingForcePulse.magnitude||6)*0.3;
+                    b.vy+=(dy/dist)*(pendingForcePulse.magnitude||6)*0.3;
+                });
+                pendingForcePulse=null;
+            }
+            if(pendingWormhole){
+                pendingWormhole.timer--;
+                if(pendingWormhole.timer<=0)pendingWormhole=null;
+            }
+
+            const audio=OracleHarmonic.getAudioState();
+            document.getElementById('ui-harmonic').innerText=(audio.dominant*100).toFixed(1);
+
+            if(frameCount%4===0)updateBackgroundRuliad();
+
+            ctx.fillStyle='#000';ctx.fillRect(0,0,WIDTH,HEIGHT);
+            if(ruliadCanvas.width>0&&ruliadCanvas.height>0){ctx.imageSmoothingEnabled=false;ctx.drawImage(ruliadCanvas,0,0,WIDTH,HEIGHT);}
+
+            ctx.save();ctx.globalCompositeOperation='color-dodge';
+            for(let i=impactRipples.length-1;i>=0;i--){
+                let rip=impactRipples[i];rip.r+=12;
+                ctx.beginPath();ctx.arc(rip.x,rip.y,rip.r,0,Math.PI*2);
+                let c=currentPalette[(2+rip.colorShift)%4];
+                let alpha=Math.max(0,1-(rip.r/(Math.max(WIDTH,HEIGHT)*0.8)));
+                ctx.strokeStyle=`rgba(${c[0]},${c[1]},${c[2]},${alpha*0.8})`;
+                ctx.lineWidth=25;ctx.stroke();
+                if(alpha<=0)impactRipples.splice(i,1);
+            }
+            ctx.restore();
+
+            if(gameState.state==='TRANSITION'){
+                gameState.transitionTimer--;
+                let prog=1-(gameState.transitionTimer/150);
+                let isGameOver=gameState.transitionType==='GAMEOVER';
+                ctx.fillStyle=`rgba(0,0,0,${Math.min(1,prog*1.5)})`;ctx.fillRect(0,0,WIDTH,HEIGHT);
+                let cx=gameState.sinkHole.x,cy=gameState.sinkHole.y;
+                for(let i=0;i<15;i++){
+                    let ringT=(i/15+prog*4)%1,scale=Math.pow(ringT,4)*6,alpha=1-Math.abs(ringT-0.5)*2;
+                    ctx.save();ctx.translate(cx,cy);ctx.scale(scale,scale);ctx.rotate(prog*Math.PI*2+ringT*Math.PI);ctx.translate(-cx,-cy);
+                    ctx.globalAlpha=Math.max(0,alpha);
+                    if(isGameOver)ctx.strokeStyle=i%2===0?'#ff0000':'#440000';
+                    else{let cIndex=i%4;ctx.strokeStyle=`rgb(${currentPalette[cIndex][0]},${currentPalette[cIndex][1]},${currentPalette[cIndex][2]})`;}
+                    ctx.lineWidth=4/scale;drawShapePath(ctx,boardShape,false);ctx.stroke();ctx.restore();
+                }
+                if(prog<0.6&&gameState.sinkingBall){let ballScale=1-(prog/0.6);ctx.save();ctx.translate(cx,cy);ctx.scale(ballScale,ballScale);gameState.sinkingBall.draw(ctx);ctx.restore();}
+                ctx.fillStyle=isGameOver?'#ff0000':'#fff';ctx.font='24px "Press Start 2P"';ctx.textAlign='center';
+                ctx.globalAlpha=Math.min(1,prog*2);
+                ctx.fillText(isGameOver?'DIMENSION COLLAPSE':'DIMENSION SHIFT',WIDTH/2,HEIGHT/2-20);
+                ctx.fillStyle='#fff';ctx.font='10px "Press Start 2P"';
+                ctx.fillText(`SURVIVED: ${gameState.bounces} BOUNCES`,WIDTH/2,HEIGHT/2+20);
+                ctx.globalAlpha=1.0;
+                if(gameState.transitionTimer<=0){gameState.state='PLAYING';if(isGameOver)restartGame();else{gameState.bounces=0;document.getElementById('ui-winding').innerText='0';nextDimension();}}
+                requestAnimationFrame(loop);return;
+            }
+
+            updateBoardRuliad();
+            const subSteps=4,dt=1/subSteps;
+            for(let step=0;step<subSteps;step++){
+                balls.forEach(b=>{
+                    if(b.dead)return;b.update();if(b.isSinking)return;
+                    b.x+=b.vx*dt;b.y+=b.vy*dt;b.angle+=Math.hypot(b.vx,b.vy)*0.05*dt;
+                    let hitWall=false,overlapOffset={x:0,y:0};
+                    for(let i=0;i<boardShape.vertices.length;i++){
+                        let A=boardShape.vertices[i],B=boardShape.vertices[(i+1)%boardShape.vertices.length];
+                        let dx=B.x-A.x,dy=B.y-A.y,len2=dx*dx+dy*dy;if(len2===0)continue;
+                        let tLine=((b.x-A.x)*dx+(b.y-A.y)*dy)/len2;tLine=Math.max(0,Math.min(1,tLine));
+                        let closestX=A.x+tLine*dx,closestY=A.y+tLine*dy;
+                        let distX=b.x-closestX,distY=b.y-closestY,dist=Math.hypot(distX,distY);
+                        if(dist<b.radius&&dist>0.01){
+                            let nx=distX/dist,ny=distY/dist,overlap=b.radius-dist;
+                            overlapOffset.x+=nx*overlap;overlapOffset.y+=ny*overlap;
+                            let dot=b.vx*nx+b.vy*ny;
+                            if(dot<0){b.vx-=2*dot*nx;b.vy-=2*dot*ny;hitWall=true;}
+                        }
+                    }
+                    b.x+=overlapOffset.x;b.y+=overlapOffset.y;
+                    let dCenter=Math.hypot(b.x-boardShape.cx,b.y-boardShape.cy);
+                    if(dCenter>boardShape.r+b.radius){let pX=boardShape.cx-b.x,pY=boardShape.cy-b.y,pLen=Math.hypot(pX,pY);b.x+=(pX/pLen)*5;b.y+=(pY/pLen)*5;}
+                    if(hitWall&&frameCount-b.lastBounce>5){
+                        b.lastBounce=frameCount;bgPaletteShift=(bgPaletteShift+1)%4;
+                        impactRipples.push({x:b.x,y:b.y,r:0,colorShift:bgPaletteShift});
+                        gameState.bounces++;document.getElementById('ui-winding').innerText=gameState.bounces;
+                        OracleHarmonic.broadcast('BOUNCE','p1',{x:b.x,y:b.y,bounces:gameState.bounces});
+                    }
+                });
+
+                for(let i=0;i<balls.length;i++)for(let j=i+1;j<balls.length;j++){
+                    let b1=balls[i],b2=balls[j];if(b1.isSinking||b2.isSinking||b1.dead||b2.dead)continue;
+                    let dx=b2.x-b1.x,dy=b2.y-b1.y,dist=Math.hypot(dx,dy),minDist=b1.radius+b2.radius;
+                    if(dist<minDist&&dist>0){
+                        let overlap=minDist-dist,nx=dx/dist,ny=dy/dist;
+                        b1.x-=nx*overlap/2;b1.y-=ny*overlap/2;b2.x+=nx*overlap/2;b2.y+=ny*overlap/2;
+                        let kx=b1.vx-b2.vx,ky=b1.vy-b2.vy,p=nx*kx+ny*ky;
+                        if(p>0){b1.vx-=p*nx;b1.vy-=p*ny;b2.vx+=p*nx;b2.vy+=p*ny;}
+                    }
+                }
+
+                balls.forEach(b=>{
+                    if(b.dead)return;
+                    if(b.isSinking){
+                        let dx=b.targetPocket.x-b.x,dy=b.targetPocket.y-b.y,dist=Math.hypot(dx,dy);
+                        if(dist<POCKET_RADIUS*0.5){
+                            if(b.type==='WHITE'){
+                                b.isSinking=false;b.x=boardShape.cx;b.y=boardShape.cy+80;b.vx=0;b.vy=0;
+                            } else if(b.type==='TARGET'){
+                                // Check provenance
+                                const firstEvt=OracleHarmonic.whoWasFirst('POCKET');
+                                const isFirst=!firstEvt;
+                                OracleHarmonic.broadcast('POCKET','p1',{
+                                    x:b.x,y:b.y,ballType:b.type,isFirst,
+                                    targetsSunk:gameState.targetsSunk+1
+                                });
+                                if(isFirst) OracleHarmonic.broadcast('FIRST','p1',{type:'POCKET',x:b.x,y:b.y});
+                                gameState.targetsSunk++;b.dead=true;b.isSinking=false;updateTargetHUD();
+                                if(gameState.targetsSunk>=4)triggerTransition(b.targetPocket,'NEXT',b);
+                            } else if(b.type==='BLACK'){
+                                b.isSinking=false;b.x=boardShape.cx;b.y=boardShape.cy;
+                                b.vx=(Math.random()-0.5)*2;b.vy=(Math.random()-0.5)*2;
+                            } else {
+                                triggerTransition(b.targetPocket,'GAMEOVER',b);
+                            }
+                        } else {
+                            b.vx=(dx/dist)*15;b.vy=(dy/dist)*15;b.x+=b.vx*dt;b.y+=b.vy*dt;
+                            b.angle+=Math.hypot(b.vx,b.vy)*0.05*dt;
+                        }
+                    } else {
+                        for(let p of boardShape.pockets){
+                            let dist=Math.hypot(p.x-b.x,p.y-b.y),pullRadius=POCKET_RADIUS*2.5;
+
+                            // Wormhole pulls harder
+                            const pullMult = (pendingWormhole && pendingWormhole.timer > 0) ? 2.5 : 1.0;
+
+                            if(dist<pullRadius&&dist>POCKET_RADIUS*1.5){let gravity=1.0*(1-dist/pullRadius)*dt*pullMult;b.vx+=((p.x-b.x)/dist)*gravity;b.vy+=((p.y-b.y)/dist)*gravity;}
+                            if(dist<=POCKET_RADIUS*1.5){b.isSinking=true;b.targetPocket=p;break;}
+                        }
+                        const caX=Math.floor(((b.x-boardRect.x)/boardRect.size)*B_CA_SIZE);
+                        const caY=Math.floor(((b.y-boardRect.y)/boardRect.size)*B_CA_SIZE);
+                        let injectionHeat=120;
+                        const audio=OracleHarmonic.getAudioState();
+                        if(audio.amplitude>0.15)injectionHeat=255;
+                        if(caX>=0&&caX<B_CA_SIZE&&caY>=0&&caY<B_CA_SIZE){
+                            trailData[caY*B_CA_SIZE+caX]=injectionHeat;
+                            if(b.type==='WHITE')trailData[caY*B_CA_SIZE+Math.max(0,caX-1)]=injectionHeat;
+                        }
+                    }
+                });
+            }
+            balls=balls.filter(b=>!b.dead);
+
+            // Broadcast position for ghost (every 15 frames)
+            if(frameCount%15===0){
+                const wb=balls.find(b=>b.type==='WHITE');
+                if(wb) OracleHarmonic.broadcast('POSITION','p1',{x:wb.x,y:wb.y,vx:wb.vx,vy:wb.vy});
+            }
+
+            drawBoard();
+            drawP2Ghost();
+            balls.forEach(b=>b.draw(ctx));
+
+            if(mouse.isDragging&&gameState.state==='PLAYING'){
+                let whiteBall=balls.find(b=>b.type==='WHITE');
+                if(whiteBall&&!whiteBall.isSinking&&!whiteBall.dead){
+                    let dx=mouse.startX-mouse.x,dy=mouse.startY-mouse.y;
+                    ctx.save();ctx.beginPath();ctx.moveTo(whiteBall.x,whiteBall.y);
+                    ctx.lineTo(whiteBall.x+dx,whiteBall.y+dy);
+                    ctx.strokeStyle='#fff';ctx.lineWidth=3;ctx.setLineDash([5,5]);ctx.stroke();
+                    ctx.beginPath();ctx.arc(whiteBall.x+dx,whiteBall.y+dy,5,0,Math.PI*2);
+                    ctx.fillStyle='rgba(255,255,255,0.5)';ctx.fill();ctx.restore();
+                }
+            }
+
+            drawThickMunkerWhite();
+            drawPockets();
+            requestAnimationFrame(loop);
+        }
+
+        generateGeometry();resize();initBalls();
+        OracleHarmonic.reconnect((count)=>{});
+        loop();
+    </script>
+</body>
+</html>
