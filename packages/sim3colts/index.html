@@ -2,893 +2,2342 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>Sim3Colts // Holographic Online Arena</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>sim3colts - Unified Learning Engine</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="GenesisBrain.js"></script>
     <style>
         * { box-sizing: border-box; }
-        body {
-            background-color: #000;
-            margin: 0;
-            overflow: hidden;
-            user-select: none;
-            touch-action: none;
-        }
-        canvas {
-            image-rendering: pixelated;
-            width: 100vw;
-            height: 100vh;
-            display: block;
-        }
-        #boot-seq {
-            position: absolute;
-            inset: 0;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            background: rgba(0,0,0,0.92);
-            color: #00ffcc;
-            font-family: monospace;
-            cursor: pointer;
-            z-index: 50;
-            transition: opacity 1s;
-        }
-        #boot-seq h1 { font-size: clamp(1.2rem, 5vw, 2rem); letter-spacing: 0.5em; text-shadow: 0 0 10px #00ffcc; }
-        #boot-seq p  { font-size: clamp(0.55rem, 2vw, 0.8rem); margin-top: 12px; text-align: center; padding: 0 20px; }
-        .pulse { animation: p 1.5s infinite; }
-        @keyframes p { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+        body { margin: 0; overflow: hidden; background-color: #020617; font-family: sans-serif; }
 
-        /* D-PAD for P1 snake on mobile */
-        #dpad {
-            position: absolute;
-            bottom: max(90px, env(safe-area-inset-bottom, 0px) + 90px);
-            left: 50%;
-            transform: translateX(-50%);
-            display: grid;
-            grid-template-columns: 44px 44px 44px;
-            grid-template-rows: 44px 44px 44px;
-            gap: 4px;
-            z-index: 20;
-            opacity: 0.55;
-        }
-        .dpad-btn {
-            background: rgba(0,255,204,0.15);
-            border: 1px solid rgba(0,255,204,0.4);
-            color: #00ffcc;
-            font-size: 1.1rem;
+        /* ── SPLASH ── */
+        #splash {
+            position: fixed; inset: 0; z-index: 9999;
             display: flex; align-items: center; justify-content: center;
-            border-radius: 4px;
-            cursor: pointer;
-            -webkit-tap-highlight-color: transparent;
+            background: #020617;
         }
-        .dpad-btn:active { background: rgba(0,255,204,0.35); }
-        .dpad-empty { background: transparent; border: none; }
+        #splash canvas {
+            position: absolute; inset: 0; width: 100%; height: 100%;
+        }
+        .splash-card {
+            position: relative; z-index: 10;
+            background: rgba(15,23,42,0.75);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(148,163,184,0.15);
+            box-shadow: 0 40px 80px -20px rgba(0,0,0,0.8);
+            border-radius: 24px;
+            padding: 48px 40px 40px;
+            max-width: 520px; width: 92%;
+            text-align: center;
+        }
+        .version-btn {
+            display: block; width: 100%;
+            border-radius: 14px;
+            padding: 20px 24px;
+            border: 1px solid;
+            cursor: pointer;
+            transition: all 0.2s cubic-bezier(0.34,1.56,0.64,1);
+            text-align: left;
+            margin-bottom: 14px;
+            position: relative;
+            overflow: hidden;
+        }
+        .version-btn:hover { transform: scale(1.025); }
+        .version-btn::before {
+            content: ''; position: absolute; inset: 0;
+            opacity: 0; transition: opacity 0.2s;
+        }
+        .version-btn:hover::before { opacity: 1; }
+        .v1-btn {
+            background: rgba(56,189,248,0.08);
+            border-color: rgba(56,189,248,0.3);
+        }
+        .v1-btn:hover { background: rgba(56,189,248,0.15); border-color: rgba(56,189,248,0.6); box-shadow: 0 0 30px rgba(56,189,248,0.2); }
+        .v2-btn {
+            background: rgba(168,85,247,0.08);
+            border-color: rgba(168,85,247,0.3);
+            margin-bottom: 0;
+        }
+        .v2-btn:hover { background: rgba(168,85,247,0.15); border-color: rgba(168,85,247,0.6); box-shadow: 0 0 30px rgba(168,85,247,0.2); }
+        .v3-btn {
+            background: rgba(20,184,166,0.08);
+            border-color: rgba(20,184,166,0.3);
+            margin-bottom: 0;
+        }
+        .v3-btn:hover { background: rgba(20,184,166,0.15); border-color: rgba(20,184,166,0.6); box-shadow: 0 0 30px rgba(20,184,166,0.2); }
 
-        /* Mode toggle buttons */
-        #mode-btns {
-            position: absolute;
-            bottom: max(90px, env(safe-area-inset-bottom, 0px) + 90px);
-            right: 10px;
-            display: flex;
-            flex-direction: column;
-            gap: 6px;
-            z-index: 20;
+        /* ── MUSEUM PANEL ── */
+        #museum-panel {
+            display: none; position: fixed; inset: 0; z-index: 10000;
+            background: rgba(2,6,23,0.97); overflow-y: auto;
+            padding: 24px;
         }
-        .mode-btn {
-            font-family: monospace;
-            font-size: 0.5rem;
-            letter-spacing: 1px;
-            padding: 5px 8px;
-            border: 1px solid rgba(170,255,170,0.4);
-            background: rgba(0,0,0,0.6);
-            color: #aaffaa;
-            cursor: pointer;
-            text-transform: uppercase;
-            -webkit-tap-highlight-color: transparent;
+        #museum-panel.active { display: block; }
+        .museum-row {
+            border: 1px solid rgba(148,163,184,0.1);
+            border-radius: 8px; padding: 12px 16px; margin-bottom: 8px;
+            background: rgba(15,23,42,0.5); cursor: pointer;
+            transition: background 0.15s;
         }
-        .mode-btn:active { background: rgba(170,255,170,0.2); }
+        .museum-row:hover { background: rgba(15,23,42,0.9); }
+        .museum-v1 { border-left: 3px solid #38bdf8; }
+        .museum-v2 { border-left: 3px solid #a855f7; }
+        .museum-v3 { border-left: 3px solid #14b8a6; }
+        .btn-tag {
+            font-size: 9px; font-weight: 700; letter-spacing: 0.15em;
+            text-transform: uppercase; font-family: monospace;
+            padding: 2px 8px; border-radius: 99px; margin-bottom: 8px;
+            display: inline-block;
+        }
+        .splash-fade-out {
+            animation: splashFade 0.6s ease forwards;
+        }
+        @keyframes splashFade {
+            to { opacity: 0; pointer-events: none; }
+        }
+
+        /* ── SHARED UI ── */
+        .glass-panel {
+            background: rgba(15,23,42,0.6);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(148,163,184,0.2);
+            box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5);
+        }
+        select { background-color: #0f172a; color: #38bdf8; border: 1px solid #334155; outline: none; }
+
+        /* ── CONTAINERS ── */
+        #v1-root, #v2-root, #v3-root { display: none; position: fixed; inset: 0; }
+        #v1-root.active, #v2-root.active, #v3-root.active { display: block; }
+
+        /* ── V2 EXTRAS ── */
+        #v2-museum-toast {
+            position: fixed; bottom: 24px; left: 50%;
+            transform: translateX(-50%) translateY(80px);
+            transition: transform 0.4s cubic-bezier(0.34,1.56,0.64,1), opacity 0.4s;
+            opacity: 0; z-index: 100; pointer-events: none;
+        }
+        #v2-museum-toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
+        @keyframes pulse-badge { 0%,100%{opacity:1} 50%{opacity:0.3} }
+        #v2-deep-badge { display:none; animation: pulse-badge 1.2s ease-in-out infinite; }
+        #v2-deep-badge.active { display: inline-block; }
     </style>
 </head>
 <body>
 
-<div id="boot-seq" id="boot-seq">
-    <h1>SIM3COLTS</h1>
-    <p style="color:#ff00aa; margin-top:6px; font-size:0.65rem; letter-spacing:2px">HOLOGRAPHIC ONLINE ARENA</p>
-    <p class="pulse" style="margin-top:18px">CONNECTING TO ONLINE ARENA...</p>
-    <p style="font-size: 0.65rem; color: #ff00aa; margin-top: 16px;">[ CLICK / TAP TO ENGAGE AUDIO SENSORS ]</p>
-    <p style="font-size:0.55rem; color:rgba(0,255,204,0.5); margin-top:10px">ARROW KEYS or D-PAD = P1 SNAKE</p>
+<!-- ═══════════════════════════════════════════════
+     SPLASH SCREEN
+═══════════════════════════════════════════════ -->
+<div id="splash">
+    <canvas id="splash-canvas"></canvas>
+    <div class="splash-card">
+        <div style="font-size:11px;font-family:monospace;letter-spacing:0.2em;color:#475569;text-transform:uppercase;margin-bottom:8px;">sim3colts</div>
+        <h1 style="font-size:28px;font-weight:800;background:linear-gradient(135deg,#38bdf8,#a855f7);-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin:0 0 6px;">Unified Learning Engine</h1>
+        <p style="font-size:13px;color:#64748b;margin:0 0 32px;">Choose your simulation environment</p>
+
+        <button class="version-btn v1-btn" onclick="launchVersion('v1')">
+            <span class="btn-tag" style="background:rgba(56,189,248,0.15);color:#38bdf8;">Original</span>
+            <div style="font-size:17px;font-weight:700;color:#e2e8f0;margin-bottom:4px;">V1 — Classic Engine</div>
+            <div style="font-size:12px;color:#64748b;line-height:1.5;">The original sim — preserved exactly as trained. Platonic boundaries, discovery mode, and all accumulated museum knowledge intact.</div>
+            <div style="margin-top:10px;font-size:10px;font-family:monospace;color:#38bdf8;opacity:0.7;">Exclusion: 25 · Trail: 50 · Classic render</div>
+        </button>
+
+        <button class="version-btn v2-btn" onclick="launchVersion('v2')">
+            <span class="btn-tag" style="background:rgba(168,85,247,0.15);color:#a855f7;">Enhanced</span>
+            <div style="font-size:17px;font-weight:700;color:#e2e8f0;margin-bottom:4px;">V2 — Deep Scan Engine</div>
+            <div style="font-size:12px;color:#64748b;line-height:1.5;">Wall heat maps, winding-number visuals, deep scan remapping at 3 resolution levels, and richer museum logging — all on the same shared knowledge base.</div>
+            <div style="margin-top:10px;font-size:10px;font-family:monospace;color:#a855f7;opacity:0.7;">Exclusion: 25→10→4 · Deep scan · Parent hash tree</div>
+        </button>
+
+        <button class="version-btn v3-btn" onclick="launchVersion('v3')">
+            <span class="btn-tag" style="background:rgba(20,184,166,0.15);color:#14b8a6;">New</span>
+            <div style="font-size:17px;font-weight:700;color:#e2e8f0;margin-bottom:4px;">V3 — Playback Engine</div>
+            <div style="font-size:12px;color:#64748b;line-height:1.5;">Pre-simulates 1000 frames silently, then plays back at your device's native frame rate. Every inversion burst fully visible. GenesisBrain live sync to all other apps.</div>
+            <div style="margin-top:10px;font-size:10px;font-family:monospace;color:#14b8a6;opacity:0.7;">1-tick/frame · Native fps · Full GenesisBrain sync</div>
+        </button>
+
+        <button onclick="openMuseum()" style="margin-top:14px;width:100%;padding:12px;border-radius:10px;border:1px solid rgba(148,163,184,0.15);background:rgba(148,163,184,0.05);color:#475569;font-size:11px;font-family:monospace;letter-spacing:0.1em;cursor:pointer;transition:all 0.2s;" onmouseover="this.style.background='rgba(148,163,184,0.1)';this.style.color='#94a3b8'" onmouseout="this.style.background='rgba(148,163,184,0.05)';this.style.color='#475569'">
+            🏛️ VIEW MUSEUM — All Discovered Structures
+        </button>
+
+        <div style="margin-top:16px;font-size:10px;color:#334155;font-family:monospace;">
+            Both versions share the same Supabase museum · Knowledge is never lost
+        </div>
+        <div id="splash-contributor" style="margin-top:10px;padding:8px 12px;border-radius:8px;background:rgba(20,184,166,0.06);border:1px solid rgba(20,184,166,0.2);font-size:9px;font-family:monospace;color:#475569;text-align:left;">
+            <span style="color:#14b8a6;">◈ CONTRIBUTOR</span>
+            <span id="splash-session-id" style="margin-left:8px;color:#334155;"></span>
+            <span style="margin-left:12px;">Discoveries: <span id="splash-disc-count" style="color:#a855f7;">0</span></span>
+            <span style="margin-left:12px;">Total ticks: <span id="splash-tick-count" style="color:#38bdf8;">0</span></span>
+        </div>
+    </div>
 </div>
 
-<canvas id="sim-canvas"></canvas>
 
-<!-- D-PAD -->
-<div id="dpad">
-    <div class="dpad-empty"></div>
-    <div class="dpad-btn" id="btn-up">▲</div>
-    <div class="dpad-empty"></div>
-    <div class="dpad-btn" id="btn-left">◀</div>
-    <div class="dpad-empty"></div>
-    <div class="dpad-btn" id="btn-right">▶</div>
-    <div class="dpad-empty"></div>
-    <div class="dpad-btn" id="btn-down">▼</div>
-    <div class="dpad-empty"></div>
+<!-- ═══════════════════════════════════════════════
+     V1 ROOT — ORIGINAL, UNTOUCHED
+═══════════════════════════════════════════════ -->
+<div id="v1-root">
+    <canvas id="v1-canvas" style="position:fixed;inset:0;width:100%;height:100%;z-index:0;"></canvas>
+    <div style="position:absolute;inset:0;z-index:10;display:flex;flex-direction:column;padding:12px;pointer-events:none;" class="md:p-6">
+        <div style="width:100%;max-width:1280px;margin:0 auto;flex-shrink:0;pointer-events:auto;">
+            <div class="glass-panel" style="border-radius:16px;padding:16px 20px;display:flex;justify-content:space-between;align-items:center;border-top:2px solid rgba(56,189,248,0.5);">
+                <div>
+                    <h1 id="v1-engine-title" style="font-size:20px;font-weight:700;background:linear-gradient(to right,#38bdf8,#6366f1);-webkit-background-clip:text;-webkit-text-fill-color:transparent;">Platonic Boundary Sim</h1>
+                    <div id="v1-geo-selector-container" style="display:flex;align-items:center;gap:8px;margin-top:8px;">
+                        <span style="color:#94a3b8;font-size:10px;text-transform:uppercase;letter-spacing:0.1em;font-weight:700;">Domain:</span>
+                        <select id="v1-geo-select" style="background:#0f172a;color:#38bdf8;border:1px solid #334155;padding:2px 6px;border-radius:4px;font-size:10px;font-family:monospace;cursor:pointer;">
+                            <option value="Square">Square</option>
+                            <option value="Triangle">Equilateral Triangle</option>
+                            <option value="Hexagon">Regular Hexagon</option>
+                            <option value="Octagon">Regular Octagon</option>
+                            <option value="Circle">Circular Domain</option>
+                        </select>
+                    </div>
+                </div>
+                <div style="display:flex;gap:16px;align-items:center;">
+                    <span id="v1-perf-indicator" style="font-size:10px;font-family:monospace;color:#34d399;text-transform:uppercase;font-weight:700;">Compute: Balanced</span>
+                    <button onclick="returnToSplash()" style="font-size:10px;font-family:monospace;color:#475569;background:rgba(71,85,105,0.2);border:1px solid #334155;border-radius:8px;padding:4px 10px;cursor:pointer;">⇦ SWITCH</button>
+                    <a href="https://buymeacoffee.com/brandonkennedy" target="_blank" style="transition:transform 0.2s;" onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform=''">
+                        <img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" style="height:32px;width:115px;">
+                    </a>
+                </div>
+            </div>
+            <div style="margin-top:12px;display:flex;flex-wrap:wrap;gap:12px;font-size:10px;font-family:monospace;letter-spacing:0.05em;">
+                <button id="v1-tab-platonic" class="glass-panel" style="padding:8px 16px;border-radius:8px;color:#38bdf8;font-weight:700;border-bottom:2px solid #38bdf8;cursor:pointer;background:none;">[1] PLATONIC BOUNDARIES</button>
+                <button id="v1-tab-discovery" class="glass-panel" style="padding:8px 16px;border-radius:8px;color:#94a3b8;cursor:pointer;background:none;border:none;">[2] DISCOVERY ENGINE</button>
+            </div>
+        </div>
+    </div>
 </div>
 
-<!-- Mode toggle buttons -->
-<div id="mode-btns">
-    <button class="mode-btn" id="btn-geo">GEO</button>
-    <button class="mode-btn" id="btn-rule">MODE</button>
-    <button class="mode-btn" id="btn-vis">VIS</button>
+
+<!-- ═══════════════════════════════════════════════
+     V2 ROOT — ENHANCED ENGINE
+═══════════════════════════════════════════════ -->
+<div id="v2-root">
+    <canvas id="v2-canvas" style="position:fixed;inset:0;width:100%;height:100%;z-index:0;"></canvas>
+    <div style="position:absolute;inset:0;z-index:10;display:flex;flex-direction:column;padding:12px;pointer-events:none;">
+        <div style="width:100%;max-width:1280px;margin:0 auto;flex-shrink:0;pointer-events:auto;">
+            <div class="glass-panel" style="border-radius:16px;padding:16px 20px;display:flex;justify-content:space-between;align-items:center;border-top:2px solid rgba(168,85,247,0.5);">
+                <div>
+                    <div style="display:flex;align-items:center;gap:12px;">
+                        <h1 id="v2-engine-title" style="font-size:20px;font-weight:700;background:linear-gradient(to right,#38bdf8,#6366f1);-webkit-background-clip:text;-webkit-text-fill-color:transparent;">Platonic Boundary Sim</h1>
+                        <span id="v2-deep-badge" style="font-size:9px;font-family:monospace;font-weight:700;padding:2px 8px;border-radius:99px;background:rgba(245,158,11,0.2);color:#f59e0b;border:1px solid rgba(245,158,11,0.4);">⬡ DEEP SCAN</span>
+                    </div>
+                    <div id="v2-geo-selector-container" style="display:flex;align-items:center;gap:8px;margin-top:8px;">
+                        <span style="color:#94a3b8;font-size:10px;text-transform:uppercase;letter-spacing:0.1em;font-weight:700;">Domain:</span>
+                        <select id="v2-geo-select" style="background:#0f172a;color:#38bdf8;border:1px solid #334155;padding:2px 6px;border-radius:4px;font-size:10px;font-family:monospace;cursor:pointer;">
+                            <option value="Square">Square</option>
+                            <option value="Triangle">Equilateral Triangle</option>
+                            <option value="Hexagon">Regular Hexagon</option>
+                            <option value="Octagon">Regular Octagon</option>
+                            <option value="Circle">Circular Domain</option>
+                        </select>
+                    </div>
+                    <div style="display:flex;gap:16px;margin-top:8px;font-size:9px;font-family:monospace;color:#475569;">
+                        <span>CHAOS: <span id="v2-stat-chaos" style="color:#34d399;">0.00</span></span>
+                        <span>INV: <span id="v2-stat-inv" style="color:#38bdf8;">0</span></span>
+                        <span>MUSEUM: <span id="v2-stat-museum" style="color:#a855f7;">0</span></span>
+                        <span>SCAN LVL: <span id="v2-stat-scan" style="color:#f59e0b;">1</span></span>
+                    </div>
+                </div>
+                <div style="display:flex;gap:16px;align-items:center;">
+                    <span id="v2-perf-indicator" style="font-size:10px;font-family:monospace;color:#34d399;text-transform:uppercase;font-weight:700;">Compute: Balanced</span>
+                    <button onclick="returnToSplash()" style="font-size:10px;font-family:monospace;color:#475569;background:rgba(71,85,105,0.2);border:1px solid #334155;border-radius:8px;padding:4px 10px;cursor:pointer;">⇦ SWITCH</button>
+                    <a href="https://buymeacoffee.com/brandonkennedy" target="_blank" style="transition:transform 0.2s;" onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform=''">
+                        <img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" style="height:32px;width:115px;">
+                    </a>
+                </div>
+            </div>
+            <div style="margin-top:12px;display:flex;flex-wrap:wrap;gap:12px;font-size:10px;font-family:monospace;letter-spacing:0.05em;">
+                <button id="v2-tab-platonic" class="glass-panel" style="padding:8px 16px;border-radius:8px;color:#38bdf8;font-weight:700;border-bottom:2px solid #38bdf8;cursor:pointer;background:none;">[1] PLATONIC BOUNDARIES</button>
+                <button id="v2-tab-discovery" class="glass-panel" style="padding:8px 16px;border-radius:8px;color:#94a3b8;cursor:pointer;background:none;border:none;">[2] DISCOVERY ENGINE</button>
+            </div>
+        </div>
+    </div>
+    <!-- Toast -->
+    <div id="v2-museum-toast" class="glass-panel" style="position:fixed;bottom:24px;left:50%;border:1px solid rgba(168,85,247,0.4);border-radius:12px;padding:12px 20px;text-align:center;pointer-events:none;">
+        <div id="v2-toast-icon" style="font-size:18px;margin-bottom:4px;">🏛️</div>
+        <div id="v2-toast-title" style="font-size:11px;font-weight:700;color:#c4b5fd;font-family:monospace;"></div>
+        <div id="v2-toast-sub" style="font-size:10px;color:#64748b;margin-top:2px;"></div>
+    </div>
 </div>
 
+
+<!-- ═══════════════════════════════════════════════
+     V3 ROOT — PLAYBACK ENGINE
+═══════════════════════════════════════════════ -->
+<div id="v3-root">
+    <canvas id="v3-canvas" style="position:fixed;inset:0;width:100%;height:100%;z-index:0;"></canvas>
+    <div style="position:absolute;inset:0;z-index:10;display:flex;flex-direction:column;padding:12px;pointer-events:none;">
+        <div style="width:100%;max-width:1280px;margin:0 auto;flex-shrink:0;pointer-events:auto;">
+            <div class="glass-panel" style="border-radius:16px;padding:16px 20px;display:flex;justify-content:space-between;align-items:center;border-top:2px solid rgba(20,184,166,0.5);">
+                <div>
+                    <h1 style="font-size:20px;font-weight:700;background:linear-gradient(to right,#14b8a6,#6366f1);-webkit-background-clip:text;-webkit-text-fill-color:transparent;">Playback Engine</h1>
+                    <div style="display:flex;gap:16px;margin-top:6px;font-size:9px;font-family:monospace;color:#475569;">
+                        <span>CHAOS: <span id="v3-stat-chaos" style="color:#34d399;">0.00</span></span>
+                        <span>INV: <span id="v3-stat-inv" style="color:#38bdf8;">0</span></span>
+                        <span>MUSEUM: <span id="v3-stat-museum" style="color:#14b8a6;">0</span></span>
+                        <span>TICKS: <span id="v3-stat-ticks" style="color:#94a3b8;">0</span></span>
+                        <span>λ: <span id="v3-stat-nm" style="color:#eab308;">—nm</span></span>
+                    </div>
+                </div>
+                <div style="display:flex;gap:12px;align-items:center;">
+                    <span id="v3-perf-indicator" style="font-size:10px;font-family:monospace;color:#14b8a6;text-transform:uppercase;font-weight:700;">Loading...</span>
+                    <button onclick="returnToSplash()" style="font-size:10px;font-family:monospace;color:#475569;background:rgba(71,85,105,0.2);border:1px solid #334155;border-radius:8px;padding:4px 10px;cursor:pointer;">⇦ SWITCH</button>
+                </div>
+            </div>
+            <div style="margin-top:12px;display:flex;flex-wrap:wrap;gap:12px;font-size:10px;font-family:monospace;letter-spacing:0.05em;">
+                <button id="v3-tab-platonic" class="glass-panel" style="padding:8px 16px;border-radius:8px;color:#14b8a6;font-weight:700;border-bottom:2px solid #14b8a6;cursor:pointer;background:none;">[1] PLATONIC BOUNDARIES</button>
+                <button id="v3-tab-discovery" class="glass-panel" style="padding:8px 16px;border-radius:8px;color:#94a3b8;cursor:pointer;background:none;border:none;">[2] DISCOVERY ENGINE</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════
+     MUSEUM PANEL
+═══════════════════════════════════════════════ -->
+<div id="museum-panel">
+    <div style="max-width:700px;margin:0 auto;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;">
+            <div>
+                <h2 style="font-size:22px;font-weight:800;color:#e2e8f0;margin:0;">🏛️ Museum</h2>
+                <p style="font-size:11px;color:#475569;font-family:monospace;margin:4px 0 0;">All discovered boundary structures · Shared across V1, V2, V3</p>
+            </div>
+            <button onclick="closeMuseum()" style="font-size:11px;font-family:monospace;color:#475569;background:rgba(71,85,105,0.2);border:1px solid #334155;border-radius:8px;padding:6px 14px;cursor:pointer;">✕ CLOSE</button>
+        </div>
+        <!-- Filter bar -->
+        <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;">
+            <button onclick="filterMuseum('all')" id="mf-all" style="font-size:10px;font-family:monospace;padding:4px 12px;border-radius:99px;border:1px solid rgba(148,163,184,0.3);background:rgba(148,163,184,0.15);color:#e2e8f0;cursor:pointer;">ALL</button>
+            <button onclick="filterMuseum('v1')" id="mf-v1" style="font-size:10px;font-family:monospace;padding:4px 12px;border-radius:99px;border:1px solid rgba(56,189,248,0.3);background:transparent;color:#38bdf8;cursor:pointer;">V1</button>
+            <button onclick="filterMuseum('v2')" id="mf-v2" style="font-size:10px;font-family:monospace;padding:4px 12px;border-radius:99px;border:1px solid rgba(168,85,247,0.3);background:transparent;color:#a855f7;cursor:pointer;">V2</button>
+            <button onclick="filterMuseum('v3')" id="mf-v3" style="font-size:10px;font-family:monospace;padding:4px 12px;border-radius:99px;border:1px solid rgba(20,184,166,0.3);background:transparent;color:#14b8a6;cursor:pointer;">V3</button>
+            <button onclick="filterMuseum('trajectory')" id="mf-traj" style="font-size:10px;font-family:monospace;padding:4px 12px;border-radius:99px;border:1px solid rgba(245,158,11,0.3);background:transparent;color:#f59e0b;cursor:pointer;">⟳ TRAJ</button>
+            <button onclick="filterMuseum('platonic')" id="mf-plat" style="font-size:10px;font-family:monospace;padding:4px 12px;border-radius:99px;border:1px solid rgba(99,102,241,0.3);background:transparent;color:#6366f1;cursor:pointer;">◈ PLATONIC</button>
+            <span id="museum-count" style="font-size:10px;font-family:monospace;color:#334155;margin-left:auto;align-self:center;"></span>
+        </div>
+        <div id="museum-list">
+            <div style="text-align:center;color:#334155;font-family:monospace;font-size:12px;padding:40px;">Loading museum...</div>
+        </div>
+    </div>
+</div>
 <script>
-// ============================================================
-// SIM3COLTS v2 — HOLOGRAPHIC ONLINE ARENA
-// Original pixel engine + Snake game + Fixed HUD + Pocket indicators
-// First to 3 sinks wins (SINK) | Survive longest (SURV)
-// ============================================================
+    // ── Shared Supabase client (both versions read/write here) ──
+    // Project: inversion_sim_db — xoolmbmnzbsvcqeyqvyi.supabase.co
+    const SUPABASE_URL = 'https://xoolmbmnzbsvcqeyqvyi.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhvb2xtYm1uemJzdmNleXhxdnlpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE0NDMwNDQsImV4cCI6MjA4NzAxOTA0NH0.ebTwMZ_byU6EXtuR0jynct64QO5ornQrCwElQ5b9TxQ';
+    const sharedSupabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    const sharedKnownHashes = new Set(); // both versions share this in-memory set
+    let sharedDbConnected = false;
 
-const TARGET_PIXELS   = 25600;
-const BOUNDARY_RADIUS = 0.85;
-const MATCH_DURATION  = 90;
-const WINS_TO_MATCH   = 3; // first to 3 sinks wins
+    // ── SESSION IDENTITY — persistent across reloads, never resets ──
+    // Each browser gets a unique contributor ID in localStorage forever.
+    // WHO found what accumulates — sessions are never wiped.
+    let SESSION_ID = localStorage.getItem('sim3_session_id');
+    if (!SESSION_ID) {
+        SESSION_ID = 'usr_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2,8);
+        localStorage.setItem('sim3_session_id', SESSION_ID);
+    }
+    let SESSION_DISCOVERIES = parseInt(localStorage.getItem('sim3_discoveries') || '0');
+    let SESSION_TICKS_TOTAL = parseInt(localStorage.getItem('sim3_ticks_total') || '0');
+    function saveSessionProgress(newDisc, addTicks) {
+        SESSION_DISCOVERIES += newDisc;
+        SESSION_TICKS_TOTAL += addTicks;
+        localStorage.setItem('sim3_discoveries', SESSION_DISCOVERIES);
+        localStorage.setItem('sim3_ticks_total', SESSION_TICKS_TOTAL);
+    }
+    console.log('[sim3] Session:', SESSION_ID, '|', SESSION_DISCOVERIES, 'discoveries |', SESSION_TICKS_TOTAL, 'ticks');
 
-const canvas    = document.getElementById('sim-canvas');
-const ctx       = canvas.getContext('2d');
-const offCanvas = document.createElement('canvas');
-const offCtx    = offCanvas.getContext('2d');
-
-let GRID_W = 100, GRID_H = 100;
-let imgData, buf;
-
-// Safe bottom margin for HUD (accounts for browser chrome)
-const SAFE_BOTTOM = 80; // px in grid units — computed below
-let GRID_SAFE_BOTTOM = 10; // updated on resize
-
-function resize() {
-    const w = Math.max(1, window.innerWidth  || 800);
-    const h = Math.max(1, window.innerHeight || 600);
-    canvas.width = w; canvas.height = h;
-    ctx.imageSmoothingEnabled = false;
-    const aspect = w / h;
-    GRID_H = Math.max(1, Math.floor(Math.sqrt(TARGET_PIXELS / aspect)));
-    GRID_W = Math.max(1, Math.floor(GRID_H * aspect));
-    offCanvas.width  = GRID_W;
-    offCanvas.height = GRID_H;
-    imgData = offCtx.createImageData(GRID_W, GRID_H);
-    buf     = new Uint32Array(imgData.data.buffer);
-    // Translate safe-area into grid pixels
-    GRID_SAFE_BOTTOM = Math.ceil((SAFE_BOTTOM / h) * GRID_H);
-}
-window.addEventListener('resize', resize);
-resize();
-
-// ---- GAME STATE ----
-let gameState     = 'BOOT';
-let geoMode       = 2; // 0=HYPER 1=RECT 2=MORPH
-let gameRule      = 0; // 0=SINK 1=SURV
-let visMode       = 0;
-let globalTime    = 0;
-let matchStartTime = 0;
-let timeRemaining = MATCH_DURATION;
-
-let p1Sinks = 0, p2Sinks = 0;   // first to WINS_TO_MATCH wins
-let p1Wins  = 0, p2Wins  = 0;   // match wins
-
-let p1Wave = { amp: 0, phase: 0, freq: 0.03 };
-let p2Wave = { amp: 0, phase: 0, freq: 0.05 };
-let bassLevel = 0, trebleLevel = 0;
-
-// Colts (the billiard balls)
-let colts = [];
-function makeColts() {
-    colts = [
-        { x: -0.2, y:  0.2, vx: 0, vy: 0, hist: [] },
-        { x:  0.2, y: -0.2, vx: 0, vy: 0, hist: [] }
+    // ── WAVELENGTH → COLOUR MAPPING ──
+    // The 7 ball colors = 7 canonical visible light wavelength bands.
+    // This is the scientific basis of the Munker-White overlay:
+    // the 1px black lines create simultaneous contrast ACROSS spectral neighbors,
+    // mimicking how V4/V1 cortex processes opponency — not just brightness but hue shift.
+    // Winding number correlates to oscillation frequency → shorter wavelength at high winding.
+    //
+    //   groupId 0 → 620-750nm → RED    (#ef4444)
+    //   groupId 1 → 590-620nm → ORANGE (#f97316)
+    //   groupId 2 → 570-590nm → YELLOW (#eab308)
+    //   groupId 3 → 495-570nm → GREEN  (#22c55e)
+    //   groupId 4 → 450-495nm → BLUE   (#3b82f6)
+    //   groupId 5 → 420-450nm → INDIGO (#4f46e5)
+    //   groupId 6 → 380-420nm → VIOLET (#a855f7)
+    const WAVELENGTH_MAP = [
+        { groupId:0, nmLo:620, nmHi:750, label:'RED',    hex:'#ef4444' },
+        { groupId:1, nmLo:590, nmHi:620, label:'ORANGE', hex:'#f97316' },
+        { groupId:2, nmLo:570, nmHi:590, label:'YELLOW', hex:'#eab308' },
+        { groupId:3, nmLo:495, nmHi:570, label:'GREEN',  hex:'#22c55e' },
+        { groupId:4, nmLo:450, nmHi:495, label:'BLUE',   hex:'#3b82f6' },
+        { groupId:5, nmLo:420, nmHi:450, label:'INDIGO', hex:'#4f46e5' },
+        { groupId:6, nmLo:380, nmHi:420, label:'VIOLET', hex:'#a855f7' },
     ];
-}
-
-// ---- AUDIO ----
-let audioCtx, analyser, dataArray;
-
-async function initAudio() {
-    try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        audioCtx  = new (window.AudioContext || window.webkitAudioContext)();
-        analyser  = audioCtx.createAnalyser();
-        const src = audioCtx.createMediaStreamSource(stream);
-        src.connect(analyser);
-        analyser.fftSize = 256;
-        dataArray = new Uint8Array(analyser.frequencyBinCount);
-        bootDone();
-    } catch(err) {
-        // No mic — still run
-        bootDone();
+    function windingToWavelength(winding) {
+        const absW = Math.abs(winding);
+        const group = Math.floor(absW) % 7;
+        const frac = absW - Math.floor(absW);
+        const band = WAVELENGTH_MAP[group];
+        const next = WAVELENGTH_MAP[(group + 1) % 7];
+        const nm = band.nmHi - frac * (band.nmHi - next.nmLo);
+        return { nm: Math.round(nm), label: band.label, hex: band.hex };
     }
-}
-
-function bootDone() {
-    const b = document.getElementById('boot-seq');
-    b.style.opacity = '0';
-    setTimeout(() => { b.style.display = 'none'; resetMatch(); requestAnimationFrame(renderLoop); }, 900);
-}
-
-document.getElementById('boot-seq').addEventListener('click',  initAudio);
-document.getElementById('boot-seq').addEventListener('touchend', e => { e.preventDefault(); initAudio(); });
-
-// ---- PIXEL FONT ----
-const font = {
-    'A':[0,1,0,1,0,1,1,1,1,1,0,1,1,0,1],'B':[1,1,0,1,0,1,1,1,0,1,0,1,1,1,0],
-    'C':[1,1,1,1,0,0,1,0,0,1,0,0,1,1,1],'D':[1,1,0,1,0,1,1,0,1,1,0,1,1,1,0],
-    'E':[1,1,1,1,0,0,1,1,0,1,0,0,1,1,1],'F':[1,1,1,1,0,0,1,1,0,1,0,0,1,0,0],
-    'G':[0,1,1,1,0,0,1,0,1,1,0,1,0,1,1],'H':[1,0,1,1,0,1,1,1,1,1,0,1,1,0,1],
-    'I':[1,1,1,0,1,0,0,1,0,0,1,0,1,1,1],'J':[0,0,1,0,0,1,0,0,1,1,0,1,0,1,0],
-    'K':[1,0,1,1,1,0,1,0,0,1,1,0,1,0,1],'L':[1,0,0,1,0,0,1,0,0,1,0,0,1,1,1],
-    'M':[1,0,1,1,1,1,1,0,1,1,0,1,1,0,1],'N':[1,1,1,1,0,1,1,0,1,1,0,1,1,0,1],
-    'O':[1,1,1,1,0,1,1,0,1,1,0,1,1,1,1],'P':[1,1,1,1,0,1,1,1,1,1,0,0,1,0,0],
-    'Q':[1,1,1,1,0,1,1,0,1,1,1,1,0,0,1],'R':[1,1,1,1,0,1,1,1,0,1,0,1,1,0,1],
-    'S':[1,1,1,1,0,0,1,1,1,0,0,1,1,1,1],'T':[1,1,1,0,1,0,0,1,0,0,1,0,0,1,0],
-    'U':[1,0,1,1,0,1,1,0,1,1,0,1,1,1,1],'V':[1,0,1,1,0,1,1,0,1,1,0,1,0,1,0],
-    'W':[1,0,1,1,0,1,1,0,1,1,1,1,1,0,1],'X':[1,0,1,1,0,1,0,1,0,1,0,1,1,0,1],
-    'Y':[1,0,1,1,0,1,0,1,0,0,1,0,0,1,0],'Z':[1,1,1,0,0,1,0,1,0,1,0,0,1,1,1],
-    '0':[1,1,1,1,0,1,1,0,1,1,0,1,1,1,1],'1':[0,1,0,1,1,0,0,1,0,0,1,0,1,1,1],
-    '2':[1,1,1,0,0,1,1,1,1,1,0,0,1,1,1],'3':[1,1,1,0,0,1,1,1,1,0,0,1,1,1,1],
-    '4':[1,0,1,1,0,1,1,1,1,0,0,1,0,0,1],'5':[1,1,1,1,0,0,1,1,1,0,0,1,1,1,1],
-    '6':[1,1,1,1,0,0,1,1,1,1,0,1,1,1,1],'7':[1,1,1,0,0,1,0,0,1,0,0,1,0,0,1],
-    '8':[1,1,1,1,0,1,1,1,1,1,0,1,1,1,1],'9':[1,1,1,1,0,1,1,1,1,0,0,1,1,1,1],
-    ':':[0,0,0,0,1,0,0,0,0,0,1,0,0,0,0],' ':[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
-    '[':[1,1,0,1,0,0,1,0,0,1,0,0,1,1,0],']':[0,1,1,0,0,1,0,0,1,0,0,1,0,1,1],
-    '!':[0,1,0,0,1,0,0,1,0,0,0,0,0,1,0],'-':[0,0,0,0,0,0,1,1,1,0,0,0,0,0,0],
-    '.':[0,0,0,0,0,0,0,0,0,0,0,0,0,1,0],'/':[0,0,1,0,0,1,0,1,0,1,0,0,1,0,0],
-    '>':[1,0,0,0,1,0,0,0,1,0,1,0,1,0,0],'<':[0,0,1,0,1,0,1,0,0,0,1,0,0,0,1],
-    '*':[0,0,0,1,0,1,0,1,0,1,0,1,0,0,0],'+':[0,0,0,0,1,0,1,1,1,0,1,0,0,0,0]
-};
-
-function drawText(text, x, y, col, scale=1) {
-    let cx = x;
-    for (let i = 0; i < text.length; i++) {
-        const glyph = font[text[i].toUpperCase()] || font[' '];
-        for (let gy = 0; gy < 5; gy++)
-            for (let gx = 0; gx < 3; gx++)
-                if (glyph[gy*3+gx])
-                    for (let sy = 0; sy < scale; sy++)
-                        for (let sx = 0; sx < scale; sx++) {
-                            const px = Math.floor(cx+(gx*scale)+sx);
-                            const py = Math.floor(y+(gy*scale)+sy);
-                            if (px>=0 && px<GRID_W && py>=0 && py<GRID_H) buf[py*GRID_W+px] = col;
-                        }
-        cx += (3*scale)+scale;
-    }
-}
-
-// ---- COLORS ----
-function makeColor(r,g,b) {
-    return 0xFF000000 | (Math.floor(b)<<16) | (Math.floor(g)<<8) | Math.floor(r);
-}
-
-// ============================================================
-// SNAKE SYSTEM
-// ============================================================
-
-const SNAKE_STEP  = 3;   // grid pixels per step
-const SNAKE_TICK  = 6;   // frames between moves
-const SNAKE_SIZE  = 2;   // radius of each segment in grid px
-const BALL_SIZE   = 2;   // collectible ball radius
-const MAX_SNAKE_POINTS = 10; // points to win snake game
-
-let snakeActive = false; // snake mode toggles with game rule? No — runs alongside
-let snakeTick   = 0;
-
-// Directions: {dx,dy} in grid pixels
-const DIR = { UP:{dx:0,dy:-1}, DOWN:{dx:0,dy:1}, LEFT:{dx:-1,dy:0}, RIGHT:{dx:1,dy:0} };
-
-let snake1 = { segs:[], dir: DIR.RIGHT, nextDir: DIR.RIGHT, alive: true, points: 0, color: 0xFFFFdd00 };
-let snake2 = { segs:[], dir: DIR.LEFT,  nextDir: DIR.LEFT,  alive: true, points: 0, color: 0xFFff00ff };
-
-// Collectible snake balls (different from colt billiard balls)
-let snakeBalls = [];
-let snakeWinner = null; // 'p1' | 'p2' | null
-
-// Convert normalised coords (-1..1) to grid px
-function normToGrid(nx, ny) {
-    const minD = Math.min(GRID_W, GRID_H);
-    return {
-        gx: Math.round(nx * (minD/2) + GRID_W/2),
-        gy: Math.round(ny * (minD/2) + GRID_H/2)
-    };
-}
-
-// Is a grid point inside the current arena boundary?
-function isInsideArena(gx, gy) {
-    const minD = Math.min(GRID_W, GRID_H);
-    const nx   = (gx - GRID_W/2) / (minD/2);
-    const ny   = (gy - GRID_H/2) / (minD/2);
-    const d    = Math.sqrt(nx*nx + ny*ny);
-    let curR   = BOUNDARY_RADIUS - 0.08; // slight inset
-
-    if (geoMode === 0) return d < curR;
-    if (geoMode === 1) return Math.abs(nx) < curR && Math.abs(ny) < curR;
-    // MORPH
-    curR = BOUNDARY_RADIUS + Math.sin(globalTime*0.05)*0.05 - 0.08;
-    return d < curR;
-}
-
-// Is a grid point in a pocket / hole?
-function isInHole(gx, gy) {
-    const minD = Math.min(GRID_W, GRID_H);
-    const nx   = (gx - GRID_W/2) / (minD/2);
-    const ny   = (gy - GRID_H/2) / (minD/2);
-    return checkHole(nx, ny, BOUNDARY_RADIUS);
-}
-
-function initSnakes() {
-    const cx = Math.floor(GRID_W/2);
-    const cy = Math.floor(GRID_H/2);
-
-    snake1.segs    = [];
-    snake1.dir     = DIR.RIGHT;
-    snake1.nextDir = DIR.RIGHT;
-    snake1.alive   = true;
-    snake1.points  = 0;
-    for (let i = 5; i >= 0; i--) snake1.segs.push({ x: cx - i*SNAKE_STEP, y: cy - 8 });
-
-    snake2.segs    = [];
-    snake2.dir     = DIR.LEFT;
-    snake2.nextDir = DIR.LEFT;
-    snake2.alive   = true;
-    snake2.points  = 0;
-    for (let i = 5; i >= 0; i--) snake2.segs.push({ x: cx + i*SNAKE_STEP, y: cy + 8 });
-
-    snakeBalls  = [];
-    snakeWinner = null;
-    spawnSnakeBall();
-    spawnSnakeBall();
-}
-
-function spawnSnakeBall() {
-    // Place a ball at a random inside-arena position
-    for (let attempt = 0; attempt < 80; attempt++) {
-        const gx = Math.floor(Math.random() * GRID_W);
-        const gy = Math.floor(Math.random() * GRID_H);
-        if (!isInsideArena(gx, gy)) continue;
-        if (isInHole(gx, gy)) continue;
-        // Not on top of a snake
-        const onSnake = [...snake1.segs, ...snake2.segs].some(s => Math.abs(s.x-gx)<4 && Math.abs(s.y-gy)<4);
-        if (onSnake) continue;
-        snakeBalls.push({ gx, gy, pulse: Math.random()*Math.PI*2 });
-        return;
-    }
-}
-
-// AI for snake2 — looks ahead, avoids walls/self
-function aiMoveSnake2() {
-    if (!snake2.alive) return;
-    const head  = snake2.segs[snake2.segs.length-1];
-    const dirs  = [DIR.UP, DIR.DOWN, DIR.LEFT, DIR.RIGHT];
-    const cur   = snake2.dir;
-
-    // Can't reverse
-    const safe = dirs.filter(d => !(d.dx === -cur.dx && d.dy === -cur.dy));
-
-    // Score each direction
-    let best = null, bestScore = -Infinity;
-    for (const d of safe) {
-        const nx = head.x + d.dx * SNAKE_STEP;
-        const ny = head.y + d.dy * SNAKE_STEP;
-
-        if (!isInsideArena(nx, ny)) continue;
-        if (isInHole(nx, ny)) continue;
-
-        // Avoid own body
-        const hitSelf = snake2.segs.some(s => Math.abs(s.x-nx)<SNAKE_SIZE*2 && Math.abs(s.y-ny)<SNAKE_SIZE*2);
-        if (hitSelf) continue;
-
-        // Avoid P1 snake
-        const hitP1 = snake1.segs.some(s => Math.abs(s.x-nx)<SNAKE_SIZE*2 && Math.abs(s.y-ny)<SNAKE_SIZE*2);
-
-        // Score: distance to nearest ball (closer = better)
-        let ballScore = 0;
-        if (snakeBalls.length > 0) {
-            const nearest = snakeBalls.reduce((a,b) =>
-                Math.hypot(b.gx-nx,b.gy-ny) < Math.hypot(a.gx-nx,a.gy-ny) ? b : a
-            );
-            ballScore = 200 / (Math.hypot(nearest.gx-nx, nearest.gy-ny) + 1);
-        }
-
-        // Prefer continuing direction (reduce jitter)
-        const continuity = (d.dx === cur.dx && d.dy === cur.dy) ? 10 : 0;
-        const score = ballScore + continuity - (hitP1 ? 50 : 0);
-
-        if (score > bestScore) { bestScore = score; best = d; }
+    // Dominant wavelength for current sim state — used in museum logging + GenesisBrain
+    function getDominantWavelength(balls) {
+        if (!balls || !balls.length) return WAVELENGTH_MAP[0];
+        // Find ball with highest |winding| — that's the dominant frequency
+        const dominant = balls.reduce((a, b) => Math.abs(a.winding) > Math.abs(b.winding) ? a : b);
+        return windingToWavelength(dominant.winding);
     }
 
-    if (best) snake2.nextDir = best;
-}
+    // Genesis Brain — use shared module to publish sim3 state
+    // Rate-limited to 2 writes/sec; all other apps receive via WS push instantly
+    let _gbLast = 0;
+    function gbWriteSim3(payload) {
+        const now = Date.now();
+        if (now - _gbLast < 500) return;
+        _gbLast = now;
+        GenesisBrain.write('sim3', payload);
+    }
 
-function stepSnakes() {
-    if (snakeWinner) return;
-
-    aiMoveSnake2();
-
-    [snake1, snake2].forEach((sn, idx) => {
-        if (!sn.alive) return;
-        sn.dir = sn.nextDir;
-        const head = sn.segs[sn.segs.length-1];
-        const nx = head.x + sn.dir.dx * SNAKE_STEP;
-        const ny = head.y + sn.dir.dy * SNAKE_STEP;
-
-        // Wall / hole death
-        if (!isInsideArena(nx, ny) || isInHole(nx, ny)) {
-            sn.alive = false;
-            snakeWinner = idx === 0 ? 'p2' : 'p1';
-            return;
-        }
-
-        // Self collision
-        const hitSelf = sn.segs.some(s => Math.abs(s.x-nx)<SNAKE_SIZE && Math.abs(s.y-ny)<SNAKE_SIZE);
-        if (hitSelf) {
-            sn.alive = false;
-            snakeWinner = idx === 0 ? 'p2' : 'p1';
-            return;
-        }
-
-        // Head-on collision with other snake
-        const other = idx === 0 ? snake2 : snake1;
-        const hitOther = other.segs.some(s => Math.abs(s.x-nx)<SNAKE_SIZE*2 && Math.abs(s.y-ny)<SNAKE_SIZE*2);
-        if (hitOther) {
-            sn.alive = false;
-            snakeWinner = idx === 0 ? 'p2' : 'p1';
-            return;
-        }
-
-        sn.segs.push({ x: nx, y: ny });
-
-        // Check ball collection
-        let ate = false;
-        snakeBalls = snakeBalls.filter(b => {
-            if (Math.abs(b.gx-nx)<SNAKE_SIZE+BALL_SIZE+2 && Math.abs(b.gy-ny)<SNAKE_SIZE+BALL_SIZE+2) {
-                sn.points++;
-                ate = true;
-                if (sn.points >= MAX_SNAKE_POINTS) snakeWinner = idx === 0 ? 'p1' : 'p2';
-                return false;
-            }
-            return true;
+    // Connect GenesisBrain WS on page load so sim3 updates flow to deep learning + smell
+    window.addEventListener('DOMContentLoaded', () => {
+        GenesisBrain.connect().then(() => {
+            console.log('[sim3colts] GenesisBrain connected');
         });
-
-        if (ate) {
-            spawnSnakeBall();
-            // Keep tail (snake grows)
-        } else {
-            sn.segs.shift(); // move — don't grow
-        }
+        // Show contributor stats on splash
+        const el_id = document.getElementById('splash-session-id');
+        const el_disc = document.getElementById('splash-disc-count');
+        const el_tick = document.getElementById('splash-tick-count');
+        if (el_id) el_id.textContent = SESSION_ID.slice(0, 18) + '...';
+        if (el_disc) el_disc.textContent = SESSION_DISCOVERIES;
+        if (el_tick) el_tick.textContent = SESSION_TICKS_TOTAL.toLocaleString();
     });
-}
 
-// Draw snakes into buf
-function drawSnakes() {
-    // Draw collectible balls
-    snakeBalls.forEach(b => {
-        b.pulse += 0.15;
-        const pulse = Math.abs(Math.sin(b.pulse));
-        const col = makeColor(255, 255*pulse, 0);
-        for (let dy=-BALL_SIZE; dy<=BALL_SIZE; dy++)
-            for (let dx=-BALL_SIZE; dx<=BALL_SIZE; dx++) {
-                if (dx*dx+dy*dy > BALL_SIZE*BALL_SIZE) continue;
-                const px=b.gx+dx, py=b.gy+dy;
-                if (px>=0&&px<GRID_W&&py>=0&&py<GRID_H) buf[py*GRID_W+px]=col;
+    // Load museum hashes once, shared by both versions
+    function loadSharedMuseum(onReady) {
+        sharedSupabase.from('museum').select('hash,chaos_ratio,inversions').limit(5000).then(({ data, error }) => {
+            if (error) {
+                // Museum table may not exist yet — sim still runs, just won't skip known configs
+                console.warn('Museum load failed (table may need creating):', error.message);
+                console.info('Run in Supabase SQL Editor: CREATE TABLE IF NOT EXISTS museum (hash text primary key, chaos_ratio text, tick_detected bigint, inversions int, version text, scan_level int, exclusion_dist int, trail_len int, parent_hash text, boundary_type text, winding_signature text, discovery_bounds text, session_id text, dominant_nm int, dominant_wavelength text, created_at timestamptz default now()); -- Also run: ALTER TABLE museum ADD COLUMN IF NOT EXISTS boundary_type text; ALTER TABLE museum ADD COLUMN IF NOT EXISTS winding_signature text; ALTER TABLE museum ADD COLUMN IF NOT EXISTS discovery_bounds text; ALTER TABLE museum ADD COLUMN IF NOT EXISTS session_id text; ALTER TABLE museum ADD COLUMN IF NOT EXISTS dominant_nm int; ALTER TABLE museum ADD COLUMN IF NOT EXISTS dominant_wavelength text;');
+            } else if (data) {
+                data.forEach(item => sharedKnownHashes.add(item.hash));
+                console.log(`Museum loaded: ${data.length} known configurations`);
+                sharedDbConnected = true;
             }
-    });
+            // Always subscribe for live inserts — catches new discoveries from other sessions
+            try {
+                sharedSupabase.channel('unified-channel')
+                    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'museum' }, payload => {
+                        if (payload.new?.hash) sharedKnownHashes.add(payload.new.hash);
+                    }).subscribe();
+            } catch(e) {}
+            onReady(); // always launch — never block on DB
+        }).catch(e => {
+            console.warn('Museum unreachable:', e);
+            onReady(); // still launch
+        });
+    }
 
-    // Draw snake segments
-    [[snake1, 0xFFFFdd00, 0xFF88aa00], [snake2, 0xFFff00ff, 0xFF880088]].forEach(([sn, headCol, bodyCol]) => {
-        sn.segs.forEach((seg, i) => {
-            const isHead = i === sn.segs.length-1;
-            const col    = isHead ? headCol : bodyCol;
-            const r      = isHead ? SNAKE_SIZE+1 : SNAKE_SIZE;
-            for (let dy=-r; dy<=r; dy++)
-                for (let dx=-r; dx<=r; dx++) {
-                    if (dx*dx+dy*dy > r*r) continue;
-                    const px=seg.x+dx, py=seg.y+dy;
-                    if (px>=0&&px<GRID_W&&py>=0&&py<GRID_H) buf[py*GRID_W+px]=col;
+    // ── Splash animation ──
+    (function() {
+        const sc = document.getElementById('splash-canvas');
+        const sctx = sc.getContext('2d');
+        const splashBalls = [];
+        const splashColors = ['#ef4444','#f97316','#eab308','#22c55e','#3b82f6','#4f46e5','#a855f7'];
+
+        function resizeSplash() { sc.width = window.innerWidth; sc.height = window.innerHeight; }
+        resizeSplash();
+        window.addEventListener('resize', resizeSplash);
+
+        for (let i = 0; i < 35; i++) {
+            splashBalls.push({
+                x: Math.random() * sc.width, y: Math.random() * sc.height,
+                vx: (Math.random()-0.5)*1.2, vy: (Math.random()-0.5)*1.2,
+                r: Math.random()*3+1, color: splashColors[i % 7],
+                path: []
+            });
+        }
+
+        function animSplash() {
+            if (!document.getElementById('splash').style.display !== 'none') return;
+            sctx.fillStyle = 'rgba(2,6,23,0.18)';
+            sctx.fillRect(0, 0, sc.width, sc.height);
+            splashBalls.forEach(b => {
+                b.x += b.vx; b.y += b.vy;
+                if (b.x < 0 || b.x > sc.width) b.vx *= -1;
+                if (b.y < 0 || b.y > sc.height) b.vy *= -1;
+                b.path.push({x:b.x,y:b.y});
+                if (b.path.length > 60) b.path.shift();
+
+                if (b.path.length > 1) {
+                    sctx.beginPath();
+                    sctx.moveTo(b.path[0].x, b.path[0].y);
+                    for (let i=1; i<b.path.length; i++) sctx.lineTo(b.path[i].x, b.path[i].y);
+                    sctx.strokeStyle = b.color + '44'; sctx.lineWidth = 1; sctx.stroke();
                 }
+
+                // Connect nearby balls
+                splashBalls.forEach(b2 => {
+                    let dx=b.x-b2.x, dy=b.y-b2.y, d=Math.sqrt(dx*dx+dy*dy);
+                    if (d < 120 && d > 0) {
+                        sctx.beginPath(); sctx.moveTo(b.x,b.y); sctx.lineTo(b2.x,b2.y);
+                        sctx.strokeStyle = b.color + Math.floor((1-d/120)*40).toString(16).padStart(2,'0');
+                        sctx.lineWidth=0.5; sctx.stroke();
+                    }
+                });
+
+                sctx.beginPath(); sctx.arc(b.x,b.y,b.r,0,Math.PI*2);
+                sctx.fillStyle = b.color + 'cc'; sctx.fill();
+            });
+            requestAnimationFrame(animSplash);
+        }
+        animSplash();
+    })();
+
+    // ── Version launch ──
+    let activeVersion = null;
+    let v1Loop = null, v2Loop = null, v3Loop = null;
+
+    function launchVersion(v) {
+        const splash = document.getElementById('splash');
+        splash.classList.add('splash-fade-out');
+        setTimeout(() => { splash.style.display = 'none'; }, 600);
+
+        activeVersion = v;
+        document.getElementById('v1-root').classList.toggle('active', v === 'v1');
+        document.getElementById('v2-root').classList.toggle('active', v === 'v2');
+        document.getElementById('v3-root').classList.toggle('active', v === 'v3');
+
+        loadSharedMuseum(() => {
+            if (v === 'v1') initV1();
+            else if (v === 'v2') initV2();
+            else if (v === 'v3') initV3();
         });
-    });
-}
-
-// ============================================================
-// BILLIARD COLT PHYSICS (original, untouched)
-// ============================================================
-
-function getHyperbolicDistance(x,y) { return Math.sqrt(x*x+y*y); }
-
-function checkHole(nx,ny,rad) {
-    if (geoMode===0) return (getHyperbolicDistance(nx,ny)>rad-0.15 && Math.abs(nx)>0.5 && Math.abs(ny)>0.5);
-    if (geoMode===1) return (Math.abs(nx)>rad-0.15 && Math.abs(ny)>rad-0.15);
-    const theta=Math.atan2(ny,nx);
-    return (getHyperbolicDistance(nx,ny)>rad-0.15 && Math.abs(Math.sin(2*theta+globalTime*0.03))>0.9);
-}
-
-// Returns array of hole positions in grid coords for visual indicators
-function getHolePositions() {
-    const positions = [];
-    const minD = Math.min(GRID_W, GRID_H);
-    const steps = 80;
-    for (let i = 0; i < steps; i++) {
-        for (let j = 0; j < steps; j++) {
-            const gx = Math.floor((i/steps)*GRID_W);
-            const gy = Math.floor((j/steps)*GRID_H);
-            const nx = (gx-GRID_W/2)/(minD/2);
-            const ny = (gy-GRID_H/2)/(minD/2);
-            if (checkHole(nx,ny,BOUNDARY_RADIUS)) {
-                positions.push({gx,gy});
-            }
-        }
-    }
-    return positions;
-}
-
-// Corner/hole indicators — drawn as blinking markers
-let holeMarkers = []; // sampled once per geoMode change
-let lastGeoModeForHoles = -1;
-let holeBlinkPhase = 0;
-
-function updateHoleMarkers() {
-    // Sample hole boundary edge points
-    if (geoMode !== lastGeoModeForHoles) {
-        lastGeoModeForHoles = geoMode;
-        holeMarkers = [];
-        const minD = Math.min(GRID_W, GRID_H);
-
-        if (geoMode === 0 || geoMode === 2) {
-            // Corner-like holes at diagonals
-            const corners = [
-                {nx: 0.72, ny: 0.72}, {nx:-0.72,ny: 0.72},
-                {nx: 0.72, ny:-0.72}, {nx:-0.72,ny:-0.72},
-                {nx: 0.0,  ny: 0.88}, {nx: 0.0,  ny:-0.88},
-                {nx: 0.88, ny: 0.0},  {nx:-0.88, ny: 0.0}
-            ];
-            corners.forEach(c => {
-                const gx = Math.round(c.nx*(minD/2)+GRID_W/2);
-                const gy = Math.round(c.ny*(minD/2)+GRID_H/2);
-                if (gx>=0&&gx<GRID_W&&gy>=0&&gy<GRID_H) holeMarkers.push({gx,gy});
-            });
-        } else {
-            // RECT mode — 4 corners exactly
-            const r = BOUNDARY_RADIUS * 0.85;
-            const corners = [
-                {nx: r, ny: r},{nx:-r,ny: r},
-                {nx: r,ny:-r},{nx:-r,ny:-r}
-            ];
-            corners.forEach(c => {
-                const gx = Math.round(c.nx*(minD/2)+GRID_W/2);
-                const gy = Math.round(c.ny*(minD/2)+GRID_H/2);
-                if (gx>=0&&gx<GRID_W&&gy>=0&&gy<GRID_H) holeMarkers.push({gx,gy});
-            });
-        }
-    }
-}
-
-function drawHoleIndicators() {
-    holeBlinkPhase += 0.07;
-    const bright = Math.abs(Math.sin(holeBlinkPhase));
-    const col = makeColor(255*bright, 0, 180*bright);
-    const r = 3;
-
-    holeMarkers.forEach(h => {
-        // Draw a small cross/diamond marker
-        for (let d = -r; d <= r; d++) {
-            const px1 = h.gx+d, py1 = h.gy;
-            const px2 = h.gx,   py2 = h.gy+d;
-            if (px1>=0&&px1<GRID_W&&py1>=0&&py1<GRID_H) buf[py1*GRID_W+px1]=col;
-            if (px2>=0&&px2<GRID_W&&py2>=0&&py2<GRID_H) buf[py2*GRID_W+px2]=col;
-        }
-        // Ring
-        for (let angle = 0; angle < Math.PI*2; angle += 0.4) {
-            const px = Math.round(h.gx + Math.cos(angle)*(r+1));
-            const py = Math.round(h.gy + Math.sin(angle)*(r+1));
-            if (px>=0&&px<GRID_W&&py>=0&&py<GRID_H) buf[py*GRID_W+px]=col;
-        }
-    });
-}
-
-function handlePocketEvent(coltIndex) {
-    if (gameRule === 0) {
-        // SINK: award point to whoever sank
-        coltIndex === 0 ? p1Sinks++ : p2Sinks++;
-    } else {
-        // SURV: losing to be sunk — award to opponent
-        coltIndex === 0 ? p2Sinks++ : p1Sinks++;
     }
 
-    // Teleport out opposite side
-    colts[coltIndex].x = -colts[coltIndex].x * 0.95;
-    colts[coltIndex].y = -colts[coltIndex].y * 0.95;
-    colts[coltIndex].hist = [];
-
-    // Check win
-    if (p1Sinks >= WINS_TO_MATCH) { p1Wins++; startNewRound(); }
-    if (p2Sinks >= WINS_TO_MATCH) { p2Wins++; startNewRound(); }
-}
-
-function startNewRound() {
-    p1Sinks = 0; p2Sinks = 0;
-    makeColts();
-    initSnakes();
-}
-
-function resetMatch() {
-    p1Sinks = 0; p2Sinks = 0;
-    p1Wins  = 0; p2Wins  = 0;
-    timeRemaining  = MATCH_DURATION;
-    matchStartTime = Date.now();
-    gameState = 'PLAYING';
-    makeColts();
-    initSnakes();
-}
-
-function updatePhysics() {
-    if (gameState !== 'PLAYING') return;
-    const elapsed = Math.floor((Date.now()-matchStartTime)/1000);
-    timeRemaining = Math.max(0, MATCH_DURATION-elapsed);
-    if (timeRemaining===0) { gameState='GAMEOVER'; return; }
-
-    if (analyser) {
-        analyser.getByteFrequencyData(dataArray);
-        let b=0; for(let i=0;i<8;i++) b+=dataArray[i]; bassLevel=(b/8)/255;
-        let t=0; for(let i=20;i<50;i++) t+=dataArray[i]; trebleLevel=(t/30)/255;
+    function returnToSplash() {
+        if (v1Loop) { cancelAnimationFrame(v1Loop); v1Loop = null; }
+        if (v2Loop) { cancelAnimationFrame(v2Loop); v2Loop = null; }
+        if (v3Loop) { cancelAnimationFrame(v3Loop); v3Loop = null; }
+        document.getElementById('v1-root').classList.remove('active');
+        document.getElementById('v2-root').classList.remove('active');
+        document.getElementById('v3-root').classList.remove('active');
+        const splash = document.getElementById('splash');
+        splash.style.display = 'flex';
+        splash.style.opacity = '1';
+        splash.classList.remove('splash-fade-out');
     }
 
-    p1Wave.amp = bassLevel*2.0;
-    p2Wave.amp = trebleLevel*2.0;
-    p1Wave.phase += 0.02+(bassLevel*0.05);
-    p2Wave.phase += 0.03+(trebleLevel*0.05);
+    // ── Museum viewer ──
+    let museumData = [], museumFilter = 'all';
 
-    colts.forEach((c,index)=>{
-        const wave = index===0 ? p1Wave : p2Wave;
-        const fx = (wave.amp/800)*Math.cos(wave.freq*globalTime+wave.phase);
-        const fy = (wave.amp/800)*Math.sin(wave.freq*globalTime+wave.phase*1.1);
-        c.vx=(c.vx+fx)*0.98; c.vy=(c.vy+fy)*0.98;
-        let nx=c.x+c.vx, ny=c.y+c.vy;
-        const dist=getHyperbolicDistance(nx,ny);
-        let curR=BOUNDARY_RADIUS;
-        if(geoMode===2) curR+=Math.sin(globalTime*0.05)*0.05+bassLevel*0.1;
-
-        if (checkHole(nx,ny,curR)) {
-            c.vx+=(Math.sign(nx)*curR-nx)*0.01;
-            c.vy+=(Math.sign(ny)*curR-ny)*0.01;
-            if(dist>curR-0.02) { handlePocketEvent(index); return; }
-        }
-
-        if (geoMode===0) {
-            if(dist>BOUNDARY_RADIUS){const nX=nx/dist,nY=ny/dist,dot=c.vx*nX+c.vy*nY;c.vx-=2*dot*nX;c.vy-=2*dot*nY;nx=nX*BOUNDARY_RADIUS;ny=nY*BOUNDARY_RADIUS;}
-        } else if(geoMode===1) {
-            if(Math.abs(nx)>BOUNDARY_RADIUS){c.vx*=-1;nx=Math.sign(nx)*BOUNDARY_RADIUS;}
-            if(Math.abs(ny)>BOUNDARY_RADIUS){c.vy*=-1;ny=Math.sign(ny)*BOUNDARY_RADIUS;}
-        } else {
-            if(dist>curR){const nX=nx/dist,nY=ny/dist,dot=c.vx*nX+c.vy*nY;c.vx-=2*dot*nX;c.vy-=2*dot*nY;nx=nX*curR;ny=nY*curR;}
-        }
-        c.x=nx; c.y=ny;
-        c.hist.push({x:nx,y:ny});
-        if(c.hist.length>25) c.hist.shift();
-    });
-
-    // Snake tick
-    snakeTick++;
-    if (snakeTick >= SNAKE_TICK) {
-        snakeTick = 0;
-        stepSnakes();
-        // Respawn round if snake winner
-        if (snakeWinner && gameState === 'PLAYING') {
-            if (snakeWinner === 'p1') p1Wins++;
-            else p2Wins++;
-            setTimeout(() => { initSnakes(); snakeWinner = null; }, 1800);
+    function openMuseum() {
+        document.getElementById('museum-panel').classList.add('active');
+        loadMuseumData();
+    }
+    function closeMuseum() {
+        document.getElementById('museum-panel').classList.remove('active');
+    }
+    function filterMuseum(v) {
+        museumFilter = v;
+        // Highlight active filter button
+        ['all','v1','v2','v3','trajectory','platonic'].forEach(id => {
+            const btn = document.getElementById('mf-'+id);
+            if (!btn) return;
+            btn.style.fontWeight = v===id ? '700' : '400';
+            btn.style.textDecoration = v===id ? 'underline' : 'none';
+        });
+        renderMuseumList();
+    }
+    async function loadMuseumData() {
+        const list = document.getElementById('museum-list');
+        list.innerHTML = '<div style="text-align:center;color:#334155;font-family:monospace;font-size:12px;padding:40px;">Loading...</div>';
+        try {
+            const { data, error } = await sharedSupabase
+                .from('museum').select('*').order('created_at', { ascending: false }).limit(500);
+            if (error) throw error;
+            museumData = data || [];
+            renderMuseumList();
+        } catch(e) {
+            list.innerHTML = '<div style="text-align:center;color:#ef4444;font-family:monospace;font-size:12px;padding:40px;">Failed to load museum</div>';
         }
     }
-
-    globalTime++;
-}
-
-// ============================================================
-// RENDER
-// ============================================================
-
-function renderLoop() {
-    if (gameState === 'BOOT') return;
-    updatePhysics();
-    updateHoleMarkers();
-
-    const t = globalTime*0.05;
-    const minD = Math.min(GRID_W, GRID_H);
-
-    const cW1 = makeColor(150+bassLevel*105, 0, 50+bassLevel*155);
-    const cW2 = makeColor(0, 100+trebleLevel*155, 150+trebleLevel*105);
-    const cI  = makeColor(255-bassLevel*50, 100+trebleLevel*155, 0);
-    const cP1 = 0xFFFFdd00, cP2 = 0xFFff00ff;
-    const cH  = 0xFFaaffaa, cA  = 0xFF0000FF;
-    const cO  = (globalTime%30<15) ? cH : makeColor(50,150,50);
-    const cS1 = makeColor(255,50,200), cS2 = makeColor(50,255,100), cNB = makeColor(240,200,100);
-
-    // ---- PIXEL BACKGROUND ----
-    for (let i = 0; i < buf.length; i++) {
-        const gx=i%GRID_W, gy=Math.floor(i/GRID_W);
-        const nx=(gx-GRID_W/2)/(minD/2), ny=(gy-GRID_H/2)/(minD/2);
-        let isB=false, isP=false, isOut=false, warp=1;
-        let curR=BOUNDARY_RADIUS;
-
-        if (geoMode===0) {
-            if(getHyperbolicDistance(nx,ny)>BOUNDARY_RADIUS+0.02) isOut=true;
-            if(getHyperbolicDistance(nx,ny)>BOUNDARY_RADIUS-0.02&&getHyperbolicDistance(nx,ny)<=BOUNDARY_RADIUS+0.02) isB=true;
-            warp=1/(1-Math.pow(Math.min(getHyperbolicDistance(nx,ny)/BOUNDARY_RADIUS,0.99),2)+0.1);
-            isP=checkHole(nx,ny,BOUNDARY_RADIUS);
-        } else if(geoMode===1) {
-            if(Math.abs(nx)>BOUNDARY_RADIUS+0.02||Math.abs(ny)>BOUNDARY_RADIUS+0.02) isOut=true;
-            if((Math.abs(nx)>BOUNDARY_RADIUS-0.02&&Math.abs(nx)<=BOUNDARY_RADIUS+0.02&&Math.abs(ny)<=BOUNDARY_RADIUS+0.02)||(Math.abs(ny)>BOUNDARY_RADIUS-0.02&&Math.abs(ny)<=BOUNDARY_RADIUS+0.02&&Math.abs(nx)<=BOUNDARY_RADIUS+0.02)) isB=true;
-            isP=checkHole(nx,ny,BOUNDARY_RADIUS);
-        } else {
-            curR=BOUNDARY_RADIUS+Math.sin(t)*0.05+bassLevel*0.1;
-            if(getHyperbolicDistance(nx,ny)>curR+0.02) isOut=true;
-            if(getHyperbolicDistance(nx,ny)>curR-0.02&&getHyperbolicDistance(nx,ny)<=curR+0.02) isB=true;
-            warp=1/(1-Math.pow(Math.min(getHyperbolicDistance(nx,ny)/curR,0.99),2)+0.1);
-            isP=checkHole(nx,ny,curR);
+    function renderMuseumList() {
+        const rows = museumFilter === 'all' ? museumData
+            : (museumFilter === 'trajectory' || museumFilter === 'platonic')
+                ? museumData.filter(r => r.boundary_type === museumFilter)
+                : museumData.filter(r => r.version === museumFilter);
+        document.getElementById('museum-count').textContent = rows.length + ' entries';
+        const vColors = { v1:'#38bdf8', v2:'#a855f7', v3:'#14b8a6' };
+        const list = document.getElementById('museum-list');
+        if (!rows.length) {
+            list.innerHTML = '<div style="text-align:center;color:#334155;font-family:monospace;font-size:12px;padding:40px;">No entries found</div>';
+            return;
         }
-
-        let bgP=makeColor(30,0,20);
-        if(isOut&&!isB&&!isP) {
-            const foam=Math.sin(getHyperbolicDistance(nx,ny)*15-t)*Math.cos(Math.atan2(ny,nx)*8+t*0.5);
-            bgP=foam>0.6?makeColor(20+bassLevel*30,0,40+trebleLevel*30):foam>0.2?makeColor(5,15+bassLevel*15,30):makeColor(2,2,5);
-        } else if(isP) {
-            const swirl=Math.sin(nx*25+ny*25-t*5);
-            bgP=swirl>0.7?makeColor(50,0,60):makeColor(0,0,0);
-        } else if(isB) { bgP=cW2; }
-        else {
-            const gX=Math.abs(Math.sin(nx*15*warp)), gY=Math.abs(Math.sin(ny*15*warp));
-            if(gX<0.1||gY<0.1) bgP=0xFF111111;
-            else {
-                const inter=Math.abs(p1Wave.amp*Math.cos(12*warp*nx-t+p1Wave.phase)*p2Wave.amp*Math.sin(12*warp*ny+t+p2Wave.phase)+Math.sin((nx*nx+ny*ny)*12-t)+Math.sin(Math.atan2(ny,nx)*4+getHyperbolicDistance(nx,ny)*10-t*2)*0.5);
-                bgP=inter>0.8?cW2:inter>0.4?cI:inter>0.1?cW1:makeColor(30,0,20);
-            }
-        }
-
-        const distP1=Math.pow(nx-colts[0].x,2)+Math.pow(ny-colts[0].y,2);
-        const distP2=Math.pow(nx-colts[1].x,2)+Math.pow(ny-colts[1].y,2);
-        const isP1=distP1<0.002, isP2=distP2<0.002;
-
-        if (visMode===0) {
-            if(isP1){buf[i]=cP1;continue;} if(isP2){buf[i]=cP2;continue;}
-            let drawn=false;
-            for(let p of colts[0].hist) if(Math.pow(nx-p.x,2)+Math.pow(ny-p.y,2)<0.0005){buf[i]=cP1&0x77FFFFFF;drawn=true;break;} if(drawn)continue;
-            for(let p of colts[1].hist) if(Math.pow(nx-p.x,2)+Math.pow(ny-p.y,2)<0.0005){buf[i]=cP2&0x77FFFFFF;drawn=true;break;} if(drawn)continue;
-            buf[i]=bgP;
-        } else {
-            const isS=(gy%4)<2, sC=isS?cS1:cS2;
-            const bgR=bgP&0xFF,bgG=(bgP>>8)&0xFF,bgBB=(bgP>>16)&0xFF;
-            const sR=sC&0xFF,sG=(sC>>8)&0xFF,sB=(sC>>16)&0xFF;
-            if(isP1) buf[i]=isS?cS1:cNB; else if(isP2) buf[i]=!isS?cS2:cNB;
-            else buf[i]=makeColor((bgR+sR)/2,(bgG+sG)/2,(bgBB+sB)/2);
-        }
+        list.innerHTML = rows.map(r => {
+            const btColor = r.boundary_type==='trajectory' ? '#f59e0b' : '#6366f1';
+            const btLabel = r.boundary_type==='trajectory' ? '⟳ TRAJ' : '◈ PLATONIC';
+            const windParts = r.winding_signature ? r.winding_signature.split(',').slice(0,5).join(' ') : null;
+            return `
+            <div class="museum-row museum-${r.version||'v1'}">
+                <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
+                    <div style="font-size:10px;font-family:monospace;color:${vColors[r.version]||'#38bdf8'};word-break:break-all;flex:1;">${r.hash||'—'}</div>
+                    <span style="font-size:9px;font-family:monospace;padding:2px 7px;border-radius:99px;background:rgba(0,0,0,0.4);color:${vColors[r.version]||'#38bdf8'};white-space:nowrap;">${(r.version||'v1').toUpperCase()}</span>
+                    <span style="font-size:8px;font-family:monospace;padding:2px 6px;border-radius:99px;background:rgba(0,0,0,0.4);color:${btColor};white-space:nowrap;border:1px solid ${btColor}44;">${btLabel}</span>
+                </div>
+                <div style="display:flex;gap:16px;margin-top:8px;font-size:9px;font-family:monospace;color:#475569;flex-wrap:wrap;">
+                    <span>CHAOS <span style="color:#94a3b8;">${r.chaos_ratio||'—'}</span></span>
+                    <span>INV <span style="color:#94a3b8;">${r.inversions??'—'}</span></span>
+                    <span>TICK <span style="color:#94a3b8;">${r.tick_detected??'—'}</span></span>
+                    ${r.scan_level ? `<span>SCAN <span style="color:#f59e0b;">Lv${r.scan_level}</span></span>` : ''}
+                    ${r.parent_hash ? `<span style="color:#334155;">⬡ child</span>` : ''}
+                    ${windParts ? `<span style="color:#334155;">W: <span style="color:#64748b;font-family:monospace;">${windParts}</span></span>` : ''}
+                    ${r.dominant_nm ? `<span style="color:#334155;">λ: <span style="color:${WAVELENGTH_MAP.find(w=>w.label===r.dominant_wavelength)?.hex||'#64748b'};font-family:monospace;">${r.dominant_nm}nm ${r.dominant_wavelength||''}</span></span>` : ''}
+                    ${r.session_id ? `<span style="color:#1e293b;font-size:8px;">by ${r.session_id.slice(0,14)}…</span>` : ''}
+                    <span style="margin-left:auto;">${r.created_at ? new Date(r.created_at).toLocaleDateString() : ''}</span>
+                </div>
+            </div>`;
+        }).join('');
     }
-
-    // ---- HOLE INDICATORS ----
-    drawHoleIndicators();
-
-    // ---- SNAKES ----
-    drawSnakes();
-
-    // ---- HUD ----
-    // Top row — scores (lifted from very top)
-    const hudY = 3;
-    drawText('P1:'+p1Sinks, 2, hudY, cP1);
-    drawText('T:'+timeRemaining.toString().padStart(2,'0'), Math.floor(GRID_W/2)-8, hudY, (timeRemaining<=10?cA:cH));
-    drawText('P2:'+p2Sinks, Math.max(0,GRID_W-22), hudY, cP2);
-
-    // Second row — wins
-    const winsY = hudY + 8;
-    drawText('W:'+p1Wins, 2, winsY, makeColor(200,150,0));
-    drawText('FIRST TO '+WINS_TO_MATCH, Math.floor(GRID_W/2)-18, winsY, makeColor(100,200,100));
-    drawText('W:'+p2Wins, Math.max(0,GRID_W-22), winsY, makeColor(200,0,150));
-
-    // Snake score row
-    const snkY = winsY + 8;
-    drawText('SN:'+snake1.points, 2, snkY, makeColor(255,220,0));
-    drawText('SNAKE', Math.floor(GRID_W/2)-9, snkY, makeColor(180,180,0));
-    drawText('SN:'+snake2.points, Math.max(0,GRID_W-22), snkY, makeColor(255,0,220));
-
-    // Snake winner flash
-    if (snakeWinner) {
-        const wCol = snakeWinner==='p1' ? cP1 : cP2;
-        const wTxt = snakeWinner==='p1' ? 'P1 WINS SNAKE!' : 'P2 WINS SNAKE!';
-        drawText(wTxt, Math.floor(GRID_W/2)-27, Math.floor(GRID_H/2)-6, wCol, 1);
-    }
-
-    // Bottom HUD — lifted above browser chrome using GRID_SAFE_BOTTOM
-    const botY1 = GRID_H - GRID_SAFE_BOTTOM - 16;
-    const botY2 = botY1 + 8;
-
-    drawText('ONLINE:24MS', 2, botY2, cO);
-    drawText('GEO:'+(geoMode===0?'HYPER':geoMode===1?'RECT':'MORPH'), 2, botY1, cH);
-    drawText('MODE:'+(gameRule===0?'SINK':'SURV'), Math.max(0,GRID_W-46), botY1, cH);
-    drawText('VIS:'+(visMode===0?'NORM':'ILLUS'), Math.max(0,GRID_W-42), botY2, cH);
-
-    // GAMEOVER
-    if (gameState==='GAMEOVER') {
-        for(let i=0;i<buf.length;i++) buf[i]=(buf[i]&0x44FFFFFF);
-        const wT=p1Wins>p2Wins?'P1 WINS!':p2Wins>p1Wins?'P2 WINS!':'DRAW!';
-        const wC=p1Wins>p2Wins?cP1:p2Wins>p1Wins?cP2:cH;
-        drawText(wT, Math.floor(GRID_W/2)-15, Math.floor(GRID_H/2)-10, wC);
-        drawText('CLICK REMATCH', Math.floor(GRID_W/2)-25, Math.floor(GRID_H/2)+5, cH);
-    }
-
-    offCtx.putImageData(imgData,0,0);
-    ctx.drawImage(offCanvas,0,0,canvas.width,canvas.height);
-    requestAnimationFrame(renderLoop);
-}
-
-// ---- INPUT ----
-
-// Keyboard P1 snake
-window.addEventListener('keydown', e => {
-    if (gameState==='BOOT') return;
-    if (gameState==='GAMEOVER') { resetMatch(); return; }
-    const cur = snake1.dir;
-    if ((e.key==='ArrowUp'    ||e.key==='w') && cur!==DIR.DOWN)  snake1.nextDir=DIR.UP;
-    if ((e.key==='ArrowDown'  ||e.key==='s') && cur!==DIR.UP)    snake1.nextDir=DIR.DOWN;
-    if ((e.key==='ArrowLeft'  ||e.key==='a') && cur!==DIR.RIGHT) snake1.nextDir=DIR.LEFT;
-    if ((e.key==='ArrowRight' ||e.key==='d') && cur!==DIR.LEFT)  snake1.nextDir=DIR.RIGHT;
-});
-
-// D-PAD buttons
-document.getElementById('btn-up').addEventListener('touchstart',    e=>{e.preventDefault();if(snake1.dir!==DIR.DOWN)  snake1.nextDir=DIR.UP;   },{passive:false});
-document.getElementById('btn-down').addEventListener('touchstart',  e=>{e.preventDefault();if(snake1.dir!==DIR.UP)    snake1.nextDir=DIR.DOWN; },{passive:false});
-document.getElementById('btn-left').addEventListener('touchstart',  e=>{e.preventDefault();if(snake1.dir!==DIR.RIGHT) snake1.nextDir=DIR.LEFT; },{passive:false});
-document.getElementById('btn-right').addEventListener('touchstart', e=>{e.preventDefault();if(snake1.dir!==DIR.LEFT)  snake1.nextDir=DIR.RIGHT;},{passive:false});
-document.getElementById('btn-up').addEventListener('mousedown',    ()=>{if(snake1.dir!==DIR.DOWN)  snake1.nextDir=DIR.UP;   });
-document.getElementById('btn-down').addEventListener('mousedown',  ()=>{if(snake1.dir!==DIR.UP)    snake1.nextDir=DIR.DOWN; });
-document.getElementById('btn-left').addEventListener('mousedown',  ()=>{if(snake1.dir!==DIR.RIGHT) snake1.nextDir=DIR.LEFT; });
-document.getElementById('btn-right').addEventListener('mousedown', ()=>{if(snake1.dir!==DIR.LEFT)  snake1.nextDir=DIR.RIGHT;});
-
-// Mode buttons
-document.getElementById('btn-geo').addEventListener('click',  ()=>{ geoMode=(geoMode+1)%3; lastGeoModeForHoles=-1; });
-document.getElementById('btn-rule').addEventListener('click', ()=>{ gameRule=(gameRule+1)%2; });
-document.getElementById('btn-vis').addEventListener('click',  ()=>{ visMode=(visMode+1)%2; });
-
-// Old tap-zone interaction still works for original gameplay
-canvas.addEventListener('pointerdown', (e) => {
-    if (gameState==='BOOT') return;
-    if (gameState==='GAMEOVER') { resetMatch(); return; }
-    // Original bottom-zone taps still work if not hitting dpad
-    const rect = canvas.getBoundingClientRect();
-    const gx = Math.floor((e.clientX-rect.left)*(GRID_W/Math.max(1,rect.width)));
-    const gy = Math.floor((e.clientY-rect.top) *(GRID_H/Math.max(1,rect.height)));
-    if (gy > GRID_H-35) {
-        if (gx < GRID_W/2) { geoMode=(geoMode+1)%3; lastGeoModeForHoles=-1; }
-        else {
-            if (gy < GRID_H-18) gameRule=(gameRule+1)%2;
-            else visMode=(visMode+1)%2;
-        }
-    }
-});
-
-// Swipe detection for snake on mobile
-let swipeStart = null;
-canvas.addEventListener('touchstart', e => {
-    swipeStart = { x: e.touches[0].clientX, y: e.touches[0].clientY };
-}, {passive:true});
-canvas.addEventListener('touchend', e => {
-    if (!swipeStart) return;
-    const dx = e.changedTouches[0].clientX - swipeStart.x;
-    const dy = e.changedTouches[0].clientY - swipeStart.y;
-    if (Math.abs(dx) < 10 && Math.abs(dy) < 10) { swipeStart=null; return; }
-    const cur = snake1.dir;
-    if (Math.abs(dx) > Math.abs(dy)) {
-        if (dx > 0 && cur!==DIR.LEFT)  snake1.nextDir=DIR.RIGHT;
-        if (dx < 0 && cur!==DIR.RIGHT) snake1.nextDir=DIR.LEFT;
-    } else {
-        if (dy > 0 && cur!==DIR.UP)   snake1.nextDir=DIR.DOWN;
-        if (dy < 0 && cur!==DIR.DOWN) snake1.nextDir=DIR.UP;
-    }
-    swipeStart = null;
-}, {passive:true});
-
 </script>
+
+
+<!-- ═══════════════════════════════════════════════
+     V1 ENGINE — ORIGINAL CODE, ZERO CHANGES
+═══════════════════════════════════════════════ -->
+<script>
+function initV1() {
+    // All V1 state is scoped inside this function — completely isolated
+    const colors = ['#ef4444','#f97316','#eab308','#22c55e','#3b82f6','#4f46e5','#a855f7'];
+    const ST_H = 5;
+    const ZETA_VOID_LIMIT = 2000;
+
+    const canvas = document.getElementById('v1-canvas');
+    const ctx = canvas.getContext('2d');
+    let width, height, CENTER_X, CENTER_Y, baseScale = 1;
+    let bgPattern, fgPatterns = [];
+
+    function initPatterns() {
+        let bgCanv = document.createElement('canvas');
+        bgCanv.width = 1; bgCanv.height = ST_H * 7;
+        let bCtx = bgCanv.getContext('2d');
+        colors.forEach((c, i) => { bCtx.fillStyle = c; bCtx.fillRect(0, i * ST_H, 1, ST_H); });
+        bgPattern = ctx.createPattern(bgCanv, 'repeat');
+        fgPatterns = colors.map((c, i) => {
+            let fgCanv = document.createElement('canvas');
+            fgCanv.width = 1; fgCanv.height = ST_H * 7;
+            let fCtx = fgCanv.getContext('2d');
+            fCtx.fillStyle = c; fCtx.fillRect(0, i * ST_H, 1, ST_H);
+            return ctx.createPattern(fgCanv, 'repeat');
+        });
+    }
+
+    function resizeCanvas() {
+        width = window.innerWidth; height = window.innerHeight;
+        canvas.width = width; canvas.height = height;
+        CENTER_X = width / 2; CENTER_Y = height / 2;
+        baseScale = Math.min(width, height) / 800;
+        initPatterns();
+    }
+
+    let simMode = 'platonic';
+    let currentGeoName = 'Square';
+    let ticks = 0, inversions = 0, chaosRatio = 0.0;
+    let currentConfigHash = '';
+    let CHUNK_SIZE = 300, lastFrameTime = performance.now(), fpsRolling = 60;
+    let discoveryBounds = { minX: -150, maxX: 150, minY: -150, maxY: 150 };
+
+    // ── Munker-White illusion state ──
+    let munkerOffset = 0;
+    const MUNKER_STRIPE_H = 38;
+    const MUNKER_SCROLL_SPEED = 0.4;
+
+    // ── Inversion event tracking ──
+    let lastInversionTime = 0;       // performance.now() at last inversion
+    let lastInversionData = null;    // snapshot of data at inversion moment
+
+    const geometries = {
+        'Square':   { type:'poly', basePoints:[[-150,-150],[150,-150],[150,150],[-150,150]], scale:1 },
+        'Triangle': { type:'poly', basePoints:[[0,-180],[156,90],[-156,90]], scale:1 },
+        'Hexagon':  { type:'poly', basePoints:[], scale:1 },
+        'Octagon':  { type:'poly', basePoints:[], scale:1 },
+        'Circle':   { type:'circle', baseRadius:150, scale:1 }
+    };
+    for(let i=0;i<6;i++) geometries['Hexagon'].basePoints.push([Math.cos(i*Math.PI/3-Math.PI/6)*165,Math.sin(i*Math.PI/3-Math.PI/6)*165]);
+    for(let i=0;i<8;i++) geometries['Octagon'].basePoints.push([Math.cos(i*Math.PI/4-Math.PI/8)*160,Math.sin(i*Math.PI/4-Math.PI/8)*160]);
+    let activeGeo = geometries['Square'];
+
+    function getScaledPoints() {
+        if (activeGeo.type !== 'poly') return [];
+        return activeGeo.basePoints.map(p => [p[0]*activeGeo.scale, p[1]*activeGeo.scale]);
+    }
+
+    class Ball {
+        constructor(groupId, isShadow=false) {
+            this.groupId = groupId;
+            this.color = colors[groupId];
+            this.isShadow = isShadow;
+            this.type = Math.random() > 0.5 ? 'smith' : 'blade';
+            this.reset();
+        }
+        reset() {
+            this.x = (Math.random()*80-40); this.y = (Math.random()*80-40);
+            let speed = this.type==='blade'?2.5:1.2;
+            let angle = Math.random()*Math.PI*2;
+            this.vx = Math.cos(angle)*speed; this.vy = Math.sin(angle)*speed;
+            this.winding = 0; this.ticksSinceHit = 0;
+            this.path = []; this.lastAngle = undefined;
+        }
+        update(shadowBall) {
+            this.x += this.vx; this.y += this.vy; this.ticksSinceHit++;
+            if (!this.isShadow && shadowBall) {
+                let dx=this.x-shadowBall.x, dy=this.y-shadowBall.y;
+                chaosRatio = (chaosRatio*0.999) + (Math.sqrt(dx*dx+dy*dy)*0.001);
+            }
+            if (!this.isShadow && ticks % 5 === 0) {
+                this.path.push({x:this.x,y:this.y});
+                if (this.path.length > 50) this.path.shift();
+            }
+            let angle = Math.atan2(this.y, this.x);
+            if (this.lastAngle !== undefined) {
+                let da = angle - this.lastAngle;
+                if (da > Math.PI) da -= 2*Math.PI;
+                if (da < -Math.PI) da += 2*Math.PI;
+                this.winding += da / (2*Math.PI);
+            }
+            this.lastAngle = angle;
+            this.checkBoundaries();
+            if (this.ticksSinceHit > ZETA_VOID_LIMIT) {
+                this.x*=0.1; this.y*=0.1; this.vx*=-1; this.vy*=-1; this.ticksSinceHit=0;
+            }
+        }
+        checkBoundaries() {
+            let hit = false;
+            if (simMode === 'discovery') {
+                if (this.x < discoveryBounds.minX || this.x > discoveryBounds.maxX) {
+                    if (this.type==='blade'){discoveryBounds.minX-=0.05;discoveryBounds.maxX+=0.05;}
+                    this.vx*=-1; this.x=this.x<discoveryBounds.minX?discoveryBounds.minX:discoveryBounds.maxX;
+                    hit=true;
+                }
+                if (this.y < discoveryBounds.minY || this.y > discoveryBounds.maxY) {
+                    if (this.type==='blade'){discoveryBounds.minY-=0.05;discoveryBounds.maxY+=0.05;}
+                    this.vy*=-1; this.y=this.y<discoveryBounds.minY?discoveryBounds.minY:discoveryBounds.maxY;
+                    hit=true;
+                }
+            } else {
+                if (activeGeo.type === 'circle') {
+                    let r=activeGeo.baseRadius*activeGeo.scale;
+                    if (this.x*this.x+this.y*this.y > r*r) {
+                        if (this.type==='blade') activeGeo.scale+=0.0002;
+                        let dist=Math.sqrt(this.x*this.x+this.y*this.y);
+                        let nx=this.x/dist, ny=this.y/dist;
+                        let dot=this.vx*nx+this.vy*ny;
+                        if (dot>0){this.vx-=2*dot*nx;this.vy-=2*dot*ny;this.x=nx*r;this.y=ny*r;hit=true;}
+                    }
+                } else {
+                    let pts=getScaledPoints();
+                    for (let i=0;i<pts.length;i++){
+                        let p1=pts[i],p2=pts[(i+1)%pts.length];
+                        let nx=-(p2[1]-p1[1]),ny=p2[0]-p1[0];
+                        let len=Math.sqrt(nx*nx+ny*ny);nx/=len;ny/=len;
+                        if(nx*(-p1[0])+ny*(-p1[1])<0){nx=-nx;ny=-ny;}
+                        let d=(this.x-p1[0])*nx+(this.y-p1[1])*ny;
+                        if(d<0){
+                            if(this.type==='blade') activeGeo.scale+=0.0002;
+                            let dot=this.vx*(-nx)+this.vy*(-ny);
+                            if(dot>0){this.vx-=2*dot*(-nx);this.vy-=2*dot*(-ny);this.x-=d*nx;this.y-=d*ny;hit=true;}
+                        }
+                    }
+                }
+            }
+            if(hit) this.ticksSinceHit=0;
+        }
+    }
+
+    let balls=[], shadowBalls=[];
+    let lastMuseumTicks = 0;
+
+    function generateHash() {
+        // Trajectory-based boundary fingerprint:
+        // Uses winding numbers + path crossing density grid, not just velocities.
+        // Each ball's accumulated winding is bucketed (±0.5 resolution) so
+        // two runs with the same boundary topology produce the same hash.
+        let windSig = balls.map(b => {
+            const wb = Math.round(b.winding * 2) / 2; // 0.5-resolution bucket
+            return `${b.type}_W${wb}_V${b.vx.toFixed(1)}_${b.vy.toFixed(1)}`;
+        }).join('|');
+        // Trajectory crossing density: divide space into 4x4 grid, count path pts per cell
+        let grid = new Array(16).fill(0);
+        balls.forEach(b => {
+            if (!b.path || b.path.length < 2) return;
+            const stride = Math.max(1, Math.floor(b.path.length / 20)); // sample 20 pts
+            for (let i = 0; i < b.path.length; i += stride) {
+                const px = b.path[i].x, py = b.path[i].y;
+                const cx = Math.min(3, Math.max(0, Math.floor((px + 200) / 100)));
+                const cy = Math.min(3, Math.max(0, Math.floor((py + 200) / 100)));
+                grid[cy * 4 + cx]++;
+            }
+        });
+        const gridSig = grid.map(v => Math.min(9, Math.floor(v / 3))).join('');
+        let hash = 0;
+        const full = windSig + gridSig;
+        for (let i = 0; i < full.length; i++) hash = Math.imul(31, hash) + full.charCodeAt(i) | 0;
+        if (simMode === 'discovery') {
+            let currentBoundSize = Math.floor(discoveryBounds.maxX - discoveryBounds.minX);
+            return `Disc_W${currentBoundSize}_${Math.abs(hash).toString(16)}`;
+        }
+        return `${currentGeoName}_${Math.abs(hash).toString(16)}`;
+    }
+
+    function _spawnBalls() {
+        balls=[]; shadowBalls=[];
+        discoveryBounds={minX:-150,maxX:150,minY:-150,maxY:150};
+        activeGeo.scale=1.0; ticks=0; lastMuseumTicks=0; chaosRatio=0; inversions=0;
+        for(let g=0;g<7;g++){
+            for(let i=0;i<7;i++){
+                let b=new Ball(g,false); balls.push(b);
+                let s=new Ball(g,true); s.x=b.x;s.y=b.y;s.vx=b.vx+1e-7;s.vy=b.vy+1e-7;
+                shadowBalls.push(s);
+            }
+        }
+    }
+
+    function initBalls() {
+        let attempts=0;
+        do { _spawnBalls(); attempts++; }
+        while(sharedKnownHashes.has(generateHash()) && attempts<50);
+        currentConfigHash=generateHash();
+    }
+
+    function applyExclusionPrinciple() {
+        for(let i=0;i<balls.length;i++){
+            for(let j=i+1;j<balls.length;j++){
+                let dx=balls[i].x-balls[j].x, dy=balls[i].y-balls[j].y;
+                if(dx*dx+dy*dy < 25){
+                    let b1=balls[i],b2=balls[j];
+                    if(Math.abs(b1.winding)<0.1){b1.vx=(Math.random()-0.5)*15;b1.vy=(Math.random()-0.5)*15;}
+                    if(Math.abs(b1.winding)>Math.abs(b2.winding)){b2.vx*=-1.08;b2.vy*=-1.08;}
+                    else{b1.vx*=-1.08;b1.vy*=-1.08;}
+                }
+            }
+        }
+    }
+
+    function checkInversion() {
+        let triggered = false;
+        if(simMode==='platonic'&&activeGeo.scale>4.5){
+            inversions++; activeGeo.scale=0.5; triggered=true;
+            balls.forEach(b=>{b.x*=0.1;b.y*=0.1;b.vx*=-1;b.vy*=-1;});
+        } else if(simMode==='discovery'&&(discoveryBounds.maxX-discoveryBounds.minX>760)){
+            inversions++; triggered=true;
+            discoveryBounds={minX:-50,maxX:50,minY:-50,maxY:50};
+            balls.forEach(b=>{b.x*=0.1;b.y*=0.1;b.vx*=-1;b.vy*=-1;});
+        }
+        if(triggered){
+            lastInversionTime=performance.now();
+            const wl=getDominantWavelength(balls);
+            lastInversionData={
+                inversions, chaos:chaosRatio.toFixed(3), ticks,
+                nm:wl.nm, wavelabel:wl.label, wavehex:wl.hex,
+                geo:currentGeoName, mode:simMode,
+                topWindings:balls.slice(0,5).map(b=>b.winding.toFixed(2)).join(' │ ')
+            };
+        }
+    }
+
+    function drawInversionOverlay(now) {
+        const elapsed = now - lastInversionTime;
+        const HOLD = 2200; // ms to show full overlay
+        const FADE = 800;  // ms to fade out
+        const total = HOLD + FADE;
+        if(!lastInversionData || elapsed > total) return;
+
+        const alpha = elapsed < HOLD ? 1.0 : 1.0 - (elapsed - HOLD) / FADE;
+        const d = lastInversionData;
+        ctx.save();
+        ctx.globalAlpha = alpha;
+
+        // Dark full-screen backdrop during blank phase
+        ctx.fillStyle = 'rgba(2,6,23,0.88)';
+        ctx.fillRect(0, 0, width, height);
+
+        // Central inversion card
+        const cw = Math.min(520, width * 0.85);
+        const ch = 240;
+        const cx = (width - cw) / 2;
+        const cy = (height - ch) / 2;
+
+        // Card background
+        ctx.fillStyle = 'rgba(15,23,42,0.95)';
+        ctx.beginPath();
+        ctx.roundRect ? ctx.roundRect(cx, cy, cw, ch, 16) : ctx.rect(cx, cy, cw, ch);
+        ctx.fill();
+
+        // Coloured top border — use dominant wavelength colour
+        ctx.fillStyle = d.wavehex;
+        ctx.fillRect(cx, cy, cw, 3);
+
+        // INVERSION # large
+        ctx.font = 'bold 13px monospace';
+        ctx.fillStyle = '#475569';
+        ctx.textAlign = 'center';
+        ctx.fillText('INVERSION EVENT', width/2, cy + 26);
+
+        ctx.font = 'bold 64px monospace';
+        ctx.fillStyle = '#e2e8f0';
+        ctx.fillText('#' + d.inversions, width/2, cy + 90);
+
+        // Data row
+        ctx.font = '11px monospace';
+        ctx.fillStyle = '#64748b';
+        ctx.fillText('CHAOS  ' + d.chaos + '   ·   TICKS  ' + d.ticks.toLocaleString() + '   ·   MODE  ' + d.mode.toUpperCase(), width/2, cy + 118);
+
+        // Wavelength row
+        ctx.font = 'bold 12px monospace';
+        ctx.fillStyle = d.wavehex;
+        ctx.fillText('λ  ' + d.nm + 'nm  —  ' + d.wavelabel, width/2, cy + 145);
+
+        // Winding signature
+        ctx.font = '10px monospace';
+        ctx.fillStyle = '#334155';
+        ctx.fillText('WINDING  ' + d.topWindings, width/2, cy + 170);
+
+        // Bottom note
+        ctx.font = '9px monospace';
+        ctx.fillStyle = '#1e293b';
+        ctx.fillText('Boundary collapsed → re-expanding  ·  geometry: ' + d.geo, width/2, cy + 200);
+
+        // Pulsing ring
+        const ringR = 24 + Math.sin(now * 0.008) * 6;
+        ctx.beginPath();
+        ctx.arc(width/2, cy - 28, ringR, 0, Math.PI*2);
+        ctx.strokeStyle = d.wavehex + '66';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(width/2, cy - 28, ringR * 0.55, 0, Math.PI*2);
+        ctx.fillStyle = d.wavehex + '33';
+        ctx.fill();
+
+        ctx.restore();
+    }
+
+    function draw() {
+        const _now = performance.now();
+        ctx.clearRect(0,0,width,height);
+        ctx.fillStyle=bgPattern; ctx.fillRect(0,0,width,height);
+        ctx.fillStyle='rgba(2,6,23,0.7)';
+        ctx.beginPath(); ctx.rect(0,0,width,height);
+        if(simMode==='discovery'){
+            ctx.rect(CENTER_X+discoveryBounds.minX*baseScale,CENTER_Y+discoveryBounds.minY*baseScale,(discoveryBounds.maxX-discoveryBounds.minX)*baseScale,(discoveryBounds.maxY-discoveryBounds.minY)*baseScale);
+        } else if(activeGeo.type==='circle'){
+            ctx.arc(CENTER_X,CENTER_Y,activeGeo.baseRadius*activeGeo.scale*baseScale,0,Math.PI*2,true);
+        } else {
+            let pts=getScaledPoints(); ctx.moveTo(CENTER_X+pts[0][0]*baseScale,CENTER_Y+pts[0][1]*baseScale);
+            for(let i=pts.length-1;i>=0;i--) ctx.lineTo(CENTER_X+pts[i][0]*baseScale,CENTER_Y+pts[i][1]*baseScale);
+        }
+        ctx.fill('evenodd');
+
+        // ── Munker-White: drawn HERE so balls + trails render ON TOP ──
+        drawMunkerWhite(ctx, width, height, munkerOffset, MUNKER_STRIPE_H);
+
+        ctx.lineWidth=1.5;
+        ctx.globalCompositeOperation='hard-light';
+        let maxDist=(simMode==='discovery'?150:150*activeGeo.scale)*baseScale;
+        for(let i=0;i<balls.length;i++){
+            for(let j=i+1;j<balls.length;j++){
+                let dx=balls[i].x*baseScale-balls[j].x*baseScale;
+                let dy=balls[i].y*baseScale-balls[j].y*baseScale;
+                if(Math.abs(dx)>maxDist||Math.abs(dy)>maxDist) continue;
+                let dist=Math.sqrt(dx*dx+dy*dy);
+                if(dist<maxDist){
+                    ctx.beginPath();
+                    ctx.moveTo(CENTER_X+balls[i].x*baseScale,CENTER_Y+balls[i].y*baseScale);
+                    let warpX=(balls[i].vx+balls[j].vx)*10*baseScale;
+                    let warpY=(balls[i].vy+balls[j].vy)*10*baseScale;
+                    ctx.bezierCurveTo(
+                        CENTER_X+balls[i].x*baseScale+warpX,CENTER_Y+balls[i].y*baseScale-warpY,
+                        CENTER_X+balls[j].x*baseScale-warpX,CENTER_Y+balls[j].y*baseScale+warpY,
+                        CENTER_X+balls[j].x*baseScale,CENTER_Y+balls[j].y*baseScale
+                    );
+                    let opacity=(1-dist/maxDist)*0.8;
+                    let grad=ctx.createLinearGradient(CENTER_X+balls[i].x*baseScale,CENTER_Y+balls[i].y*baseScale,CENTER_X+balls[j].x*baseScale,CENTER_Y+balls[j].y*baseScale);
+                    grad.addColorStop(0,balls[i].color+Math.floor(opacity*255).toString(16).padStart(2,'0'));
+                    grad.addColorStop(1,balls[j].color+Math.floor(opacity*255).toString(16).padStart(2,'0'));
+                    ctx.strokeStyle=grad; ctx.stroke();
+                }
+            }
+        }
+        ctx.globalCompositeOperation='source-over';
+
+        for(let g=0;g<7;g++){
+            let groupBalls=balls.filter(b=>b.groupId===g);
+            groupBalls.forEach(b=>{
+                if(b.path.length>0){
+                    ctx.beginPath();
+                    ctx.moveTo(CENTER_X+b.path[0].x*baseScale,CENTER_Y+b.path[0].y*baseScale);
+                    for(let i=1;i<b.path.length;i++){
+                        let xc=CENTER_X+(b.path[i-1].x+b.path[i].x)/2*baseScale;
+                        let yc=CENTER_Y+(b.path[i-1].y+b.path[i].y)/2*baseScale;
+                        ctx.quadraticCurveTo(CENTER_X+b.path[i-1].x*baseScale,CENTER_Y+b.path[i-1].y*baseScale,xc,yc);
+                    }
+                    ctx.lineTo(CENTER_X+b.x*baseScale,CENTER_Y+b.y*baseScale);
+                    ctx.lineWidth=b.type==='smith'?4:2;
+                    ctx.strokeStyle='#94a3b8'; ctx.stroke();
+                    if(fgPatterns[g]){ctx.strokeStyle=fgPatterns[g];ctx.stroke();}
+                }
+            });
+            groupBalls.forEach(b=>{
+                ctx.beginPath();
+                ctx.arc(CENTER_X+b.x*baseScale,CENTER_Y+b.y*baseScale,(b.type==='smith'?8:5)*baseScale,0,Math.PI*2);
+                ctx.fillStyle='#94a3b8'; ctx.fill();
+                if(fgPatterns[g]){ctx.fillStyle=fgPatterns[g];ctx.fill();}
+            });
+        }
+
+        ctx.strokeStyle='#334155'; ctx.lineWidth=3;
+        if(simMode==='discovery'){
+            ctx.strokeRect(CENTER_X+discoveryBounds.minX*baseScale,CENTER_Y+discoveryBounds.minY*baseScale,(discoveryBounds.maxX-discoveryBounds.minX)*baseScale,(discoveryBounds.maxY-discoveryBounds.minY)*baseScale);
+        } else if(activeGeo.type==='circle'){
+            ctx.beginPath();ctx.arc(CENTER_X,CENTER_Y,activeGeo.baseRadius*activeGeo.scale*baseScale,0,Math.PI*2);ctx.stroke();
+        } else {
+            let pts=getScaledPoints();
+            ctx.beginPath();ctx.moveTo(CENTER_X+pts[0][0]*baseScale,CENTER_Y+pts[0][1]*baseScale);
+            for(let i=1;i<pts.length;i++) ctx.lineTo(CENTER_X+pts[i][0]*baseScale,CENTER_Y+pts[i][1]*baseScale);
+            ctx.closePath();ctx.stroke();
+        }
+
+        // ── Inversion overlay — shown during blank phase ──
+        drawInversionOverlay(_now);
+    }
+
+    function drawMunkerWhite(ctx, W, H, offset, stripeH) {
+        ctx.save();
+
+        // Clip to sim boundary — lines only inside the active geometry
+        ctx.beginPath();
+        if (simMode==='discovery') {
+            ctx.rect(
+                CENTER_X+discoveryBounds.minX*baseScale,
+                CENTER_Y+discoveryBounds.minY*baseScale,
+                (discoveryBounds.maxX-discoveryBounds.minX)*baseScale,
+                (discoveryBounds.maxY-discoveryBounds.minY)*baseScale
+            );
+        } else if (activeGeo.type==='circle') {
+            ctx.arc(CENTER_X, CENTER_Y, activeGeo.baseRadius*activeGeo.scale*baseScale, 0, Math.PI*2);
+        } else {
+            let pts=getScaledPoints();
+            ctx.moveTo(CENTER_X+pts[0][0]*baseScale, CENTER_Y+pts[0][1]*baseScale);
+            for (let i=1;i<pts.length;i++) ctx.lineTo(CENTER_X+pts[i][0]*baseScale, CENTER_Y+pts[i][1]*baseScale);
+            ctx.closePath();
+        }
+        ctx.clip();
+
+        // Grey bands — identical grey, will look different due to stripe intersection
+        const bandW = W * 0.08;
+        const leftBandX  = W * 0.18;
+        const rightBandX = W * 0.74;
+        ctx.globalAlpha = 0.30;
+        ctx.fillStyle = '#808080';
+        ctx.fillRect(leftBandX,  0, bandW, H);
+        ctx.fillRect(rightBandX, 0, bandW, H);
+        ctx.globalAlpha = 1.0;
+
+        // 1px black lines oscillating up/down across full sim width
+        const startY = (offset % stripeH) - stripeH;
+        for (let y = startY; y < H + stripeH; y += stripeH) {
+            ctx.fillStyle = 'rgba(0,0,0,0.88)';
+            ctx.fillRect(0, y, W, 1);
+        }
+        // Right band: replace those black 1px lines with white 1px lines
+        // Left band keeps black → grey seen through white gaps = lighter
+        // Right band gets white → grey seen through black gaps = darker
+        for (let y = startY; y < H + stripeH; y += stripeH) {
+            ctx.fillStyle = 'rgba(255,255,255,0.88)';
+            ctx.fillRect(rightBandX, y, bandW, 1);
+        }
+
+        ctx.restore();
+    }
+
+    function loop() {
+        const now = performance.now();
+        fpsRolling = (fpsRolling*0.9) + ((1000/Math.max(1,now-lastFrameTime))*0.1);
+        lastFrameTime = now;
+        munkerOffset = Math.sin(now*0.0008)*MUNKER_STRIPE_H*3 + now*0.01;
+        const perfEl = document.getElementById('v1-perf-indicator');
+        if(fpsRolling<30){CHUNK_SIZE=Math.max(50,CHUNK_SIZE-5);perfEl.textContent='Compute: Throttled';perfEl.style.color='#f87171';}
+        else if(fpsRolling>55){CHUNK_SIZE=Math.min(800,CHUNK_SIZE+2);perfEl.textContent='Compute: Unleashed';perfEl.style.color='#34d399';}
+
+        for(let c=0;c<CHUNK_SIZE;c++){
+            balls.forEach((b,i)=>b.update(shadowBalls[i]));
+            shadowBalls.forEach(b=>b.update(null));
+            applyExclusionPrinciple();
+            checkInversion();
+            ticks++;
+        }
+        draw();
+
+        const v1ChaosGate = simMode==='discovery' ? 20.0 : 8.0;
+        if(sharedDbConnected && ticks>0 && ticks-lastMuseumTicks>=10000 && chaosRatio<v1ChaosGate){
+            lastMuseumTicks=ticks;
+            let currentEvolvedHash=generateHash();
+            if(!sharedKnownHashes.has(currentEvolvedHash)){
+                sharedKnownHashes.add(currentEvolvedHash);
+                // Trajectory boundary snapshot: winding stats + path density
+                const windingStats = balls.map(b=>b.winding.toFixed(2)).join(',');
+                const boundaryType = simMode==='discovery'?'trajectory':'platonic';
+                const wl1=getDominantWavelength(balls);
+                saveSessionProgress(1, 0);
+                sharedSupabase.from('museum').upsert({
+                    hash:currentEvolvedHash,
+                    chaos_ratio:chaosRatio.toFixed(2),
+                    tick_detected:ticks,
+                    inversions,
+                    version:'v1',
+                    boundary_type: boundaryType,
+                    winding_signature: windingStats,
+                    discovery_bounds: simMode==='discovery'?JSON.stringify(discoveryBounds):null,
+                    session_id: SESSION_ID,
+                    dominant_nm: wl1.nm,
+                    dominant_wavelength: wl1.label
+                }).catch(e=>console.error(e));
+            }
+        }
+        // Publish to genesis_brain so spectral_link / deep_learning can render sim3 state
+        gbWriteSim3({
+            balls: balls.slice(0, 49).map(b => ({
+                x: (CENTER_X + b.x * baseScale) / width,   // normalized 0-1
+                y: (CENTER_Y + b.y * baseScale) / height,
+                vx: b.vx, vy: b.vy,
+                winding: b.winding,
+                color: b.color,
+                type: b.type,
+                groupId: b.groupId,
+                glow: 0
+            })),
+            chaos_ratio: chaosRatio,
+            inversions: inversions,
+            ticks: ticks,
+            geo: currentGeoName,
+            sim_mode: simMode,
+            version: 'v1',
+            dominant_nm: getDominantWavelength(balls).nm,
+            dominant_wavelength: getDominantWavelength(balls).label,
+            session_id: SESSION_ID
+        });
+        v1Loop = requestAnimationFrame(loop);
+    }
+
+    // UI
+    const v1Title = document.getElementById('v1-engine-title');
+    const v1TabPlat = document.getElementById('v1-tab-platonic');
+    const v1TabDisc = document.getElementById('v1-tab-discovery');
+    const v1GeoCont = document.getElementById('v1-geo-selector-container');
+
+    v1TabPlat.onclick = () => {
+        simMode='platonic';
+        v1Title.textContent='Platonic Boundary Sim';
+        v1Title.style.background='linear-gradient(to right,#38bdf8,#6366f1)';
+        v1TabPlat.style.cssText='padding:8px 16px;border-radius:8px;color:#38bdf8;font-weight:700;border-bottom:2px solid #38bdf8;cursor:pointer;background:none;';
+        v1TabDisc.style.cssText='padding:8px 16px;border-radius:8px;color:#94a3b8;cursor:pointer;background:none;border:none;';
+        v1GeoCont.style.display='flex';
+        initBalls();
+    };
+    v1TabDisc.onclick = () => {
+        simMode='discovery';
+        v1Title.textContent='Boundary Discovery Engine';
+        v1Title.style.background='linear-gradient(to right,#c084fc,#ec4899)';
+        v1TabDisc.style.cssText='padding:8px 16px;border-radius:8px;color:#c084fc;font-weight:700;border-bottom:2px solid #c084fc;cursor:pointer;background:none;';
+        v1TabPlat.style.cssText='padding:8px 16px;border-radius:8px;color:#94a3b8;cursor:pointer;background:none;border:none;';
+        v1GeoCont.style.display='none';
+        initBalls();
+    };
+    document.getElementById('v1-geo-select').onchange = (e) => {
+        currentGeoName=e.target.value; activeGeo=geometries[currentGeoName]; initBalls();
+    };
+    window.addEventListener('resize', () => { if(activeVersion==='v1') resizeCanvas(); });
+
+    resizeCanvas();
+    initBalls();
+    loop();
+}
+</script>
+
+
+<!-- ═══════════════════════════════════════════════
+     V2 ENGINE — ENHANCED, ISOLATED
+═══════════════════════════════════════════════ -->
+<script>
+function initV2() {
+    const colors = ['#ef4444','#f97316','#eab308','#22c55e','#3b82f6','#4f46e5','#a855f7'];
+    const ST_H = 5;
+    const ZETA_VOID_LIMIT = 2000;
+
+    const canvas = document.getElementById('v2-canvas');
+    const ctx = canvas.getContext('2d');
+    let width, height, CENTER_X, CENTER_Y, baseScale = 1;
+    let bgPattern, fgPatterns = [];
+
+    // Deep scan system
+    let scanLevel = 1;
+    let scanParentHash = null;
+    const SCAN_CONFIGS = [
+        null,
+        { exclusionDist:25, trailLen:50, label:'1', color:'#38bdf8' },
+        { exclusionDist:10, trailLen:25, label:'2', color:'#f59e0b' },
+        { exclusionDist:4,  trailLen:12, label:'3', color:'#a855f7' },
+    ];
+    let wallHeat = new Array(8).fill(0);
+    let wallHeatMax = 1;
+    let lastDiscoveryFlash = 0;
+    let museumCount = 0;
+
+    // ── Inversion tracking ──
+    let lastInversionTime = 0;
+    let lastInversionData = null;
+
+    // ── Munker-White illusion state ──
+    let munkerOffset = 0;
+    const MUNKER_STRIPE_H = 38;
+    const MUNKER_SCROLL_SPEED = 0.4;
+
+    function getScanConfig() { return SCAN_CONFIGS[Math.min(scanLevel,3)]; }
+
+    function initPatterns() {
+        let bgCanv=document.createElement('canvas');
+        bgCanv.width=1;bgCanv.height=ST_H*7;
+        let bCtx=bgCanv.getContext('2d');
+        colors.forEach((c,i)=>{bCtx.fillStyle=c;bCtx.fillRect(0,i*ST_H,1,ST_H);});
+        bgPattern=ctx.createPattern(bgCanv,'repeat');
+        fgPatterns=colors.map((c,i)=>{
+            let fc=document.createElement('canvas');fc.width=1;fc.height=ST_H*7;
+            let fCtx=fc.getContext('2d');fCtx.fillStyle=c;fCtx.fillRect(0,i*ST_H,1,ST_H);
+            return ctx.createPattern(fc,'repeat');
+        });
+    }
+
+    function resizeCanvas() {
+        width=window.innerWidth;height=window.innerHeight;
+        canvas.width=width;canvas.height=height;
+        CENTER_X=width/2;CENTER_Y=height/2;
+        baseScale=Math.min(width,height)/800;
+        initPatterns();
+    }
+
+    let simMode='platonic', currentGeoName='Square';
+    let ticks=0, inversions=0, chaosRatio=0.0;
+    let CHUNK_SIZE=300, lastFrameTime=performance.now(), fpsRolling=60;
+    let discoveryBounds={minX:-150,maxX:150,minY:-150,maxY:150};
+
+    const geometries={
+        'Square':  {type:'poly',basePoints:[[-150,-150],[150,-150],[150,150],[-150,150]],scale:1},
+        'Triangle':{type:'poly',basePoints:[[0,-180],[156,90],[-156,90]],scale:1},
+        'Hexagon': {type:'poly',basePoints:[],scale:1},
+        'Octagon': {type:'poly',basePoints:[],scale:1},
+        'Circle':  {type:'circle',baseRadius:150,scale:1}
+    };
+    for(let i=0;i<6;i++) geometries['Hexagon'].basePoints.push([Math.cos(i*Math.PI/3-Math.PI/6)*165,Math.sin(i*Math.PI/3-Math.PI/6)*165]);
+    for(let i=0;i<8;i++) geometries['Octagon'].basePoints.push([Math.cos(i*Math.PI/4-Math.PI/8)*160,Math.sin(i*Math.PI/4-Math.PI/8)*160]);
+    let activeGeo=geometries['Square'];
+
+    function getScaledPoints(){
+        if(activeGeo.type!=='poly') return [];
+        return activeGeo.basePoints.map(p=>[p[0]*activeGeo.scale,p[1]*activeGeo.scale]);
+    }
+
+    class Ball {
+        constructor(groupId,isShadow=false){
+            this.groupId=groupId;this.color=colors[groupId];
+            this.isShadow=isShadow;this.type=Math.random()>0.5?'smith':'blade';
+            this.reset();
+        }
+        reset(){
+            this.x=(Math.random()*80-40);this.y=(Math.random()*80-40);
+            let speed=this.type==='blade'?2.5:1.2;
+            let angle=Math.random()*Math.PI*2;
+            this.vx=Math.cos(angle)*speed;this.vy=Math.sin(angle)*speed;
+            this.winding=0;this.ticksSinceHit=0;
+            this.path=[];this.lastAngle=undefined;this.glowIntensity=0;
+        }
+        update(shadowBall){
+            this.x+=this.vx;this.y+=this.vy;this.ticksSinceHit++;
+            this.glowIntensity*=0.92;
+            if(!this.isShadow&&shadowBall){
+                let dx=this.x-shadowBall.x,dy=this.y-shadowBall.y;
+                chaosRatio=(chaosRatio*0.999)+(Math.sqrt(dx*dx+dy*dy)*0.001);
+            }
+            const cfg=getScanConfig();
+            if(!this.isShadow&&ticks%5===0){
+                this.path.push({x:this.x,y:this.y});
+                if(this.path.length>cfg.trailLen) this.path.shift();
+            }
+            let angle=Math.atan2(this.y,this.x);
+            if(this.lastAngle!==undefined){
+                let da=angle-this.lastAngle;
+                if(da>Math.PI)da-=2*Math.PI;if(da<-Math.PI)da+=2*Math.PI;
+                this.winding+=da/(2*Math.PI);
+            }
+            this.lastAngle=angle;
+            this.checkBoundaries();
+            if(this.ticksSinceHit>ZETA_VOID_LIMIT){this.x*=0.1;this.y*=0.1;this.vx*=-1;this.vy*=-1;this.ticksSinceHit=0;}
+        }
+        checkBoundaries(){
+            let hit=false,wallIdx=-1;
+            if(simMode==='discovery'){
+                if(this.x<discoveryBounds.minX||this.x>discoveryBounds.maxX){
+                    wallIdx=this.x<discoveryBounds.minX?3:1;
+                    if(this.type==='blade'){discoveryBounds.minX-=0.05;discoveryBounds.maxX+=0.05;}
+                    this.vx*=-1;this.x=this.x<discoveryBounds.minX?discoveryBounds.minX:discoveryBounds.maxX;hit=true;
+                }
+                if(this.y<discoveryBounds.minY||this.y>discoveryBounds.maxY){
+                    wallIdx=this.y<discoveryBounds.minY?0:2;
+                    if(this.type==='blade'){discoveryBounds.minY-=0.05;discoveryBounds.maxY+=0.05;}
+                    this.vy*=-1;this.y=this.y<discoveryBounds.minY?discoveryBounds.minY:discoveryBounds.maxY;hit=true;
+                }
+            } else {
+                if(activeGeo.type==='circle'){
+                    let r=activeGeo.baseRadius*activeGeo.scale;
+                    if(this.x*this.x+this.y*this.y>r*r){
+                        if(this.type==='blade') activeGeo.scale+=0.0002;
+                        let dist=Math.sqrt(this.x*this.x+this.y*this.y);
+                        let nx=this.x/dist,ny=this.y/dist,dot=this.vx*nx+this.vy*ny;
+                        if(dot>0){this.vx-=2*dot*nx;this.vy-=2*dot*ny;this.x=nx*r;this.y=ny*r;hit=true;wallIdx=0;}
+                    }
+                } else {
+                    let pts=getScaledPoints();
+                    for(let i=0;i<pts.length;i++){
+                        let p1=pts[i],p2=pts[(i+1)%pts.length];
+                        let nx=-(p2[1]-p1[1]),ny=p2[0]-p1[0];
+                        let len=Math.sqrt(nx*nx+ny*ny);nx/=len;ny/=len;
+                        if(nx*(-p1[0])+ny*(-p1[1])<0){nx=-nx;ny=-ny;}
+                        let d=(this.x-p1[0])*nx+(this.y-p1[1])*ny;
+                        if(d<0){
+                            if(this.type==='blade') activeGeo.scale+=0.0002;
+                            let dot=this.vx*(-nx)+this.vy*(-ny);
+                            if(dot>0){this.vx-=2*dot*(-nx);this.vy-=2*dot*(-ny);this.x-=d*nx;this.y-=d*ny;hit=true;wallIdx=i;}
+                        }
+                    }
+                }
+            }
+            if(hit){
+                this.ticksSinceHit=0;
+                this.glowIntensity=Math.min(1,this.glowIntensity+0.6);
+                if(wallIdx>=0){if(!wallHeat[wallIdx])wallHeat[wallIdx]=0;wallHeat[wallIdx]++;wallHeatMax=Math.max(wallHeatMax,wallHeat[wallIdx]);}
+            }
+        }
+    }
+
+    let balls=[],shadowBalls=[];
+    let lastMuseumTicks=0;
+
+    function generateHash(){
+        const cfg=getScanConfig();
+        // Trajectory + winding signature (same logic as V1 but includes scan config)
+        let windSig=balls.map(b=>{
+            const wb=Math.round(b.winding*2)/2;
+            return `${b.type}_W${wb}_V${b.vx.toFixed(1)}_${b.vy.toFixed(1)}`;
+        }).join('|');
+        let grid=new Array(16).fill(0);
+        balls.forEach(b=>{
+            if(!b.path||b.path.length<2)return;
+            const stride=Math.max(1,Math.floor(b.path.length/20));
+            for(let i=0;i<b.path.length;i+=stride){
+                const cx=Math.min(3,Math.max(0,Math.floor((b.path[i].x+200)/100)));
+                const cy=Math.min(3,Math.max(0,Math.floor((b.path[i].y+200)/100)));
+                grid[cy*4+cx]++;
+            }
+        });
+        // V2: also incorporate wall heat signature
+        const heatSig=wallHeat.map(v=>Math.min(9,Math.floor(v/(wallHeatMax||1)*9))).join('');
+        const gridSig=grid.map(v=>Math.min(9,Math.floor(v/3))).join('');
+        let hash=0; const full=windSig+gridSig+heatSig;
+        for(let i=0;i<full.length;i++) hash=Math.imul(31,hash)+full.charCodeAt(i)|0;
+        let prefix=simMode==='discovery'
+            ?`Disc_W${Math.floor(discoveryBounds.maxX-discoveryBounds.minX)}_Ex${cfg.exclusionDist}_v2`
+            :`${currentGeoName}_Ex${cfg.exclusionDist}_v2`;
+        return `${prefix}_${Math.abs(hash).toString(16)}`;
+    }
+
+    function _spawnBalls(){
+        balls=[];shadowBalls=[];
+        wallHeat=new Array(8).fill(0);wallHeatMax=1;
+        discoveryBounds={minX:-150,maxX:150,minY:-150,maxY:150};
+        activeGeo.scale=1.0;ticks=0;lastMuseumTicks=0;chaosRatio=0;inversions=0;
+        for(let g=0;g<7;g++){
+            for(let i=0;i<7;i++){
+                let b=new Ball(g,false);balls.push(b);
+                let s=new Ball(g,true);s.x=b.x;s.y=b.y;s.vx=b.vx+1e-7;s.vy=b.vy+1e-7;
+                shadowBalls.push(s);
+            }
+        }
+    }
+
+    function initBalls(){
+        let attempts=0;
+        do { _spawnBalls(); attempts++; }
+        while(sharedKnownHashes.has(generateHash()) && attempts<50);
+    }
+
+    function triggerDeepScan(parentHash){
+        if(scanLevel>=3){scanLevel=1;scanParentHash=null;document.getElementById('v2-deep-badge').classList.remove('active');}
+        else{scanLevel++;scanParentHash=parentHash;document.getElementById('v2-deep-badge').classList.add('active');}
+        document.getElementById('v2-stat-scan').textContent=scanLevel;
+        initBalls();
+    }
+
+    function applyExclusionPrinciple(){
+        const cfg=getScanConfig();
+        for(let i=0;i<balls.length;i++){
+            for(let j=i+1;j<balls.length;j++){
+                let dx=balls[i].x-balls[j].x,dy=balls[i].y-balls[j].y;
+                if(dx*dx+dy*dy<cfg.exclusionDist*cfg.exclusionDist){
+                    let b1=balls[i],b2=balls[j];
+                    b1.glowIntensity=Math.min(1,b1.glowIntensity+0.4);
+                    b2.glowIntensity=Math.min(1,b2.glowIntensity+0.4);
+                    if(Math.abs(b1.winding)<0.1){b1.vx=(Math.random()-0.5)*15;b1.vy=(Math.random()-0.5)*15;}
+                    if(Math.abs(b1.winding)>Math.abs(b2.winding)){b2.vx*=-1.08;b2.vy*=-1.08;}
+                    else{b1.vx*=-1.08;b1.vy*=-1.08;}
+                }
+            }
+        }
+    }
+
+    function checkInversion(){
+        let triggered=false;
+        if(simMode==='platonic'&&activeGeo.scale>4.5){
+            inversions++;activeGeo.scale=0.5;triggered=true;
+            balls.forEach(b=>{b.x*=0.1;b.y*=0.1;b.vx*=-1;b.vy*=-1;});
+        } else if(simMode==='discovery'&&(discoveryBounds.maxX-discoveryBounds.minX>760)){
+            inversions++;triggered=true;
+            discoveryBounds={minX:-50,maxX:50,minY:-50,maxY:50};
+            balls.forEach(b=>{b.x*=0.1;b.y*=0.1;b.vx*=-1;b.vy*=-1;});
+        }
+        document.getElementById('v2-stat-inv').textContent=inversions;
+        if(triggered){
+            lastInversionTime=performance.now();
+            const wl=getDominantWavelength(balls);
+            lastInversionData={
+                inversions,chaos:chaosRatio.toFixed(3),ticks,
+                nm:wl.nm,wavelabel:wl.label,wavehex:wl.hex,
+                geo:currentGeoName,mode:simMode,
+                scanLevel,
+                topWindings:balls.slice(0,5).map(b=>b.winding.toFixed(2)).join(' │ ')
+            };
+        }
+    }
+
+    function drawInversionOverlay(now) {
+        const elapsed = now - lastInversionTime;
+        const HOLD = 2200, FADE = 800, total = HOLD + FADE;
+        if(!lastInversionData || elapsed > total) return;
+        const alpha = elapsed < HOLD ? 1.0 : 1.0 - (elapsed - HOLD) / FADE;
+        const d = lastInversionData;
+        ctx.save();
+        ctx.globalAlpha = alpha;
+        ctx.fillStyle = 'rgba(2,6,23,0.88)';
+        ctx.fillRect(0, 0, width, height);
+        const cw=Math.min(560,width*0.85),ch=260,cx=(width-cw)/2,cy=(height-ch)/2;
+        ctx.fillStyle='rgba(15,23,42,0.96)';
+        ctx.beginPath();
+        ctx.roundRect?ctx.roundRect(cx,cy,cw,ch,16):ctx.rect(cx,cy,cw,ch);
+        ctx.fill();
+        ctx.fillStyle=d.wavehex; ctx.fillRect(cx,cy,cw,3);
+        ctx.font='bold 11px monospace'; ctx.fillStyle='#475569'; ctx.textAlign='center';
+        ctx.fillText('INVERSION EVENT  ·  V2 DEEP SCAN  ·  SCAN LVL '+(d.scanLevel||1), width/2, cy+24);
+        ctx.font='bold 72px monospace'; ctx.fillStyle='#e2e8f0';
+        ctx.fillText('#'+d.inversions, width/2, cy+100);
+        ctx.font='11px monospace'; ctx.fillStyle='#64748b';
+        ctx.fillText('CHAOS  '+d.chaos+'   ·   TICKS  '+d.ticks.toLocaleString()+'   ·   MODE  '+d.mode.toUpperCase(), width/2, cy+128);
+        ctx.font='bold 13px monospace'; ctx.fillStyle=d.wavehex;
+        ctx.fillText('λ  '+d.nm+'nm  —  '+d.wavelabel, width/2, cy+158);
+        ctx.font='10px monospace'; ctx.fillStyle='#334155';
+        ctx.fillText('WINDING  '+d.topWindings, width/2, cy+182);
+        ctx.font='9px monospace'; ctx.fillStyle='#1e293b';
+        ctx.fillText('Boundary collapsed → re-expanding  ·  geometry: '+d.geo, width/2, cy+210);
+        const ringR=24+Math.sin(now*0.008)*6;
+        ctx.beginPath(); ctx.arc(width/2,cy-30,ringR,0,Math.PI*2);
+        ctx.strokeStyle=d.wavehex+'66'; ctx.lineWidth=1.5; ctx.stroke();
+        ctx.beginPath(); ctx.arc(width/2,cy-30,ringR*0.55,0,Math.PI*2);
+        ctx.fillStyle=d.wavehex+'33'; ctx.fill();
+        ctx.restore();
+    }
+
+    let toastTimeout=null;
+    function showToast(icon,title,sub){
+        const toast=document.getElementById('v2-museum-toast');
+        document.getElementById('v2-toast-icon').textContent=icon;
+        document.getElementById('v2-toast-title').textContent=title;
+        document.getElementById('v2-toast-sub').textContent=sub;
+        toast.classList.add('show');
+        clearTimeout(toastTimeout);
+        toastTimeout=setTimeout(()=>toast.classList.remove('show'),3500);
+    }
+
+    function draw(){
+        const now=performance.now();
+        ctx.clearRect(0,0,width,height);
+        ctx.fillStyle=bgPattern;ctx.fillRect(0,0,width,height);
+
+        // Scan level tint
+        if(scanLevel>1){
+            ctx.fillStyle=scanLevel===2?'rgba(245,158,11,0.06)':'rgba(168,85,247,0.08)';
+            ctx.fillRect(0,0,width,height);
+        }
+        // Chaos atmosphere
+        if(chaosRatio>5){
+            let intensity=Math.min(1,(chaosRatio-5)/10)*0.15;
+            ctx.fillStyle=`rgba(239,68,68,${intensity})`;ctx.fillRect(0,0,width,height);
+        }
+
+        // Mask
+        ctx.fillStyle='rgba(2,6,23,0.72)';ctx.beginPath();ctx.rect(0,0,width,height);
+        if(simMode==='discovery'){
+            ctx.rect(CENTER_X+discoveryBounds.minX*baseScale,CENTER_Y+discoveryBounds.minY*baseScale,(discoveryBounds.maxX-discoveryBounds.minX)*baseScale,(discoveryBounds.maxY-discoveryBounds.minY)*baseScale);
+        } else if(activeGeo.type==='circle'){
+            ctx.arc(CENTER_X,CENTER_Y,activeGeo.baseRadius*activeGeo.scale*baseScale,0,Math.PI*2,true);
+        } else {
+            let pts=getScaledPoints();ctx.moveTo(CENTER_X+pts[0][0]*baseScale,CENTER_Y+pts[0][1]*baseScale);
+            for(let i=pts.length-1;i>=0;i--) ctx.lineTo(CENTER_X+pts[i][0]*baseScale,CENTER_Y+pts[i][1]*baseScale);
+        }
+        ctx.fill('evenodd');
+
+        // ── Munker-White: drawn HERE so balls + trails render ON TOP ──
+        drawMunkerWhite(ctx, width, height, munkerOffset, MUNKER_STRIPE_H);
+
+        // Ruliad graph
+        ctx.lineWidth=1.5;ctx.globalCompositeOperation='hard-light';
+        let maxDist=(simMode==='discovery'?150:150*activeGeo.scale)*baseScale;
+        for(let i=0;i<balls.length;i++){
+            for(let j=i+1;j<balls.length;j++){
+                let dx=balls[i].x*baseScale-balls[j].x*baseScale;
+                let dy=balls[i].y*baseScale-balls[j].y*baseScale;
+                if(Math.abs(dx)>maxDist||Math.abs(dy)>maxDist) continue;
+                let dist=Math.sqrt(dx*dx+dy*dy);
+                if(dist<maxDist){
+                    ctx.beginPath();
+                    ctx.moveTo(CENTER_X+balls[i].x*baseScale,CENTER_Y+balls[i].y*baseScale);
+                    let warpX=(balls[i].vx+balls[j].vx)*10*baseScale;
+                    let warpY=(balls[i].vy+balls[j].vy)*10*baseScale;
+                    ctx.bezierCurveTo(CENTER_X+balls[i].x*baseScale+warpX,CENTER_Y+balls[i].y*baseScale-warpY,CENTER_X+balls[j].x*baseScale-warpX,CENTER_Y+balls[j].y*baseScale+warpY,CENTER_X+balls[j].x*baseScale,CENTER_Y+balls[j].y*baseScale);
+                    let opacity=(1-dist/maxDist)*0.8;
+                    let grad=ctx.createLinearGradient(CENTER_X+balls[i].x*baseScale,CENTER_Y+balls[i].y*baseScale,CENTER_X+balls[j].x*baseScale,CENTER_Y+balls[j].y*baseScale);
+                    grad.addColorStop(0,balls[i].color+Math.floor(opacity*255).toString(16).padStart(2,'0'));
+                    grad.addColorStop(1,balls[j].color+Math.floor(opacity*255).toString(16).padStart(2,'0'));
+                    ctx.strokeStyle=grad;ctx.stroke();
+                }
+            }
+        }
+        ctx.globalCompositeOperation='source-over';
+
+        // Trails + balls with winding visuals
+        for(let g=0;g<7;g++){
+            let groupBalls=balls.filter(b=>b.groupId===g);
+            groupBalls.forEach(b=>{
+                if(b.path.length>1){
+                    let windingBoost=Math.min(1,Math.abs(b.winding)/5);
+                    ctx.beginPath();
+                    ctx.moveTo(CENTER_X+b.path[0].x*baseScale,CENTER_Y+b.path[0].y*baseScale);
+                    for(let i=1;i<b.path.length;i++){
+                        let xc=CENTER_X+(b.path[i-1].x+b.path[i].x)/2*baseScale;
+                        let yc=CENTER_Y+(b.path[i-1].y+b.path[i].y)/2*baseScale;
+                        ctx.quadraticCurveTo(CENTER_X+b.path[i-1].x*baseScale,CENTER_Y+b.path[i-1].y*baseScale,xc,yc);
+                    }
+                    ctx.lineTo(CENTER_X+b.x*baseScale,CENTER_Y+b.y*baseScale);
+                    ctx.lineWidth=b.type==='smith'?3+windingBoost*2:1.5+windingBoost;
+                    ctx.globalAlpha=0.35+windingBoost*0.45;
+                    ctx.strokeStyle='#94a3b8';ctx.stroke();
+                    if(fgPatterns[g]){ctx.strokeStyle=fgPatterns[g];ctx.stroke();}
+                    ctx.globalAlpha=1;
+                }
+            });
+            groupBalls.forEach(b=>{
+                let windingBoost=Math.min(1,Math.abs(b.winding)/5);
+                let r=(b.type==='smith'?8:5)*baseScale;
+                let glowAmt=Math.max(windingBoost*0.6,b.glowIntensity);
+                if(glowAmt>0.05){
+                    ctx.beginPath();ctx.arc(CENTER_X+b.x*baseScale,CENTER_Y+b.y*baseScale,r*(1.8+glowAmt*2),0,Math.PI*2);
+                    ctx.fillStyle=b.color+Math.floor(glowAmt*80).toString(16).padStart(2,'0');ctx.fill();
+                }
+                ctx.beginPath();ctx.arc(CENTER_X+b.x*baseScale,CENTER_Y+b.y*baseScale,r*(1+windingBoost*0.4),0,Math.PI*2);
+                ctx.fillStyle='#94a3b8';ctx.fill();
+                if(fgPatterns[g]){ctx.fillStyle=fgPatterns[g];ctx.fill();}
+                if(b.type==='smith'&&Math.abs(b.winding)>1){
+                    ctx.beginPath();ctx.arc(CENTER_X+b.x*baseScale,CENTER_Y+b.y*baseScale,r*1.6,0,Math.PI*2);
+                    ctx.strokeStyle=b.color+'aa';ctx.lineWidth=1.5;ctx.stroke();
+                }
+            });
+        }
+
+        // Boundary with heat
+        drawBoundaryWithHeat();
+
+        // Discovery flash
+        if(lastDiscoveryFlash>0){
+            let elapsed=now-lastDiscoveryFlash;
+            if(elapsed<800){
+                let t=elapsed/800,alpha=(1-t)*0.35;
+                ctx.fillStyle=`rgba(168,85,247,${alpha})`;ctx.fillRect(0,0,width,height);
+                ctx.globalAlpha=(1-t);drawBoundaryStroke('#a855f7',6);ctx.globalAlpha=1;
+            } else {lastDiscoveryFlash=0;}
+        }
+
+        // Stats
+        document.getElementById('v2-stat-chaos').textContent=chaosRatio.toFixed(2);
+        document.getElementById('v2-stat-chaos').style.color=chaosRatio>8?'#f87171':chaosRatio>4?'#f59e0b':'#34d399';
+
+        // ── Inversion overlay ──
+        drawInversionOverlay(now);
+    }
+
+    function drawBoundaryWithHeat(){
+        if(simMode==='discovery'){
+            const walls=[
+                {x1:CENTER_X+discoveryBounds.minX*baseScale,y1:CENTER_Y+discoveryBounds.minY*baseScale,x2:CENTER_X+discoveryBounds.maxX*baseScale,y2:CENTER_Y+discoveryBounds.minY*baseScale,idx:0},
+                {x1:CENTER_X+discoveryBounds.maxX*baseScale,y1:CENTER_Y+discoveryBounds.minY*baseScale,x2:CENTER_X+discoveryBounds.maxX*baseScale,y2:CENTER_Y+discoveryBounds.maxY*baseScale,idx:1},
+                {x1:CENTER_X+discoveryBounds.maxX*baseScale,y1:CENTER_Y+discoveryBounds.maxY*baseScale,x2:CENTER_X+discoveryBounds.minX*baseScale,y2:CENTER_Y+discoveryBounds.maxY*baseScale,idx:2},
+                {x1:CENTER_X+discoveryBounds.minX*baseScale,y1:CENTER_Y+discoveryBounds.maxY*baseScale,x2:CENTER_X+discoveryBounds.minX*baseScale,y2:CENTER_Y+discoveryBounds.minY*baseScale,idx:3}
+            ];
+            walls.forEach(w=>{
+                let heat=(wallHeat[w.idx]||0)/wallHeatMax;
+                ctx.beginPath();ctx.moveTo(w.x1,w.y1);ctx.lineTo(w.x2,w.y2);
+                ctx.strokeStyle='#334155';ctx.lineWidth=2;ctx.stroke();
+                if(heat>0.05){
+                    let heatColor=`rgba(${Math.floor(59+heat*196)},${Math.floor(130-heat*130)},${Math.floor(246-heat*246)},${heat*0.9})`;
+                    ctx.beginPath();ctx.moveTo(w.x1,w.y1);ctx.lineTo(w.x2,w.y2);
+                    ctx.strokeStyle=heatColor;ctx.lineWidth=2+heat*6;
+                    ctx.shadowColor=heatColor;ctx.shadowBlur=heat*20;ctx.stroke();ctx.shadowBlur=0;
+                }
+            });
+        } else if(activeGeo.type==='circle'){
+            let heat=(wallHeat[0]||0)/wallHeatMax;
+            ctx.beginPath();ctx.arc(CENTER_X,CENTER_Y,activeGeo.baseRadius*activeGeo.scale*baseScale,0,Math.PI*2);
+            ctx.strokeStyle='#334155';ctx.lineWidth=3;ctx.stroke();
+            if(heat>0.05){
+                let heatColor=`rgba(${Math.floor(59+heat*196)},${Math.floor(130-heat*130)},${Math.floor(246-heat*246)},${heat*0.8})`;
+                ctx.strokeStyle=heatColor;ctx.lineWidth=3+heat*8;ctx.shadowColor=heatColor;ctx.shadowBlur=heat*25;ctx.stroke();ctx.shadowBlur=0;
+            }
+        } else {
+            let pts=getScaledPoints();
+            for(let i=0;i<pts.length;i++){
+                let p1=pts[i],p2=pts[(i+1)%pts.length];
+                let heat=(wallHeat[i]||0)/wallHeatMax;
+                ctx.beginPath();ctx.moveTo(CENTER_X+p1[0]*baseScale,CENTER_Y+p1[1]*baseScale);ctx.lineTo(CENTER_X+p2[0]*baseScale,CENTER_Y+p2[1]*baseScale);
+                ctx.strokeStyle='#334155';ctx.lineWidth=3;ctx.stroke();
+                if(heat>0.05){
+                    let heatColor=`rgba(${Math.floor(59+heat*196)},${Math.floor(130-heat*130)},${Math.floor(246-heat*246)},${heat*0.9})`;
+                    ctx.strokeStyle=heatColor;ctx.lineWidth=3+heat*8;ctx.shadowColor=heatColor;ctx.shadowBlur=heat*20;ctx.stroke();ctx.shadowBlur=0;
+                }
+            }
+        }
+    }
+
+    function drawBoundaryStroke(color,lineWidth){
+        ctx.strokeStyle=color;ctx.lineWidth=lineWidth;
+        if(simMode==='discovery'){
+            ctx.strokeRect(CENTER_X+discoveryBounds.minX*baseScale,CENTER_Y+discoveryBounds.minY*baseScale,(discoveryBounds.maxX-discoveryBounds.minX)*baseScale,(discoveryBounds.maxY-discoveryBounds.minY)*baseScale);
+        } else if(activeGeo.type==='circle'){
+            ctx.beginPath();ctx.arc(CENTER_X,CENTER_Y,activeGeo.baseRadius*activeGeo.scale*baseScale,0,Math.PI*2);ctx.stroke();
+        } else {
+            let pts=getScaledPoints();
+            ctx.beginPath();ctx.moveTo(CENTER_X+pts[0][0]*baseScale,CENTER_Y+pts[0][1]*baseScale);
+            for(let i=1;i<pts.length;i++) ctx.lineTo(CENTER_X+pts[i][0]*baseScale,CENTER_Y+pts[i][1]*baseScale);
+            ctx.closePath();ctx.stroke();
+        }
+    }
+
+    function drawMunkerWhite(ctx, W, H, offset, stripeH) {
+        ctx.save();
+
+        // Clip to sim boundary — lines only inside the active geometry, matching its scale
+        ctx.beginPath();
+        if (simMode==='discovery') {
+            ctx.rect(
+                CENTER_X+discoveryBounds.minX*baseScale,
+                CENTER_Y+discoveryBounds.minY*baseScale,
+                (discoveryBounds.maxX-discoveryBounds.minX)*baseScale,
+                (discoveryBounds.maxY-discoveryBounds.minY)*baseScale
+            );
+        } else if (activeGeo.type==='circle') {
+            ctx.arc(CENTER_X, CENTER_Y, activeGeo.baseRadius*activeGeo.scale*baseScale, 0, Math.PI*2);
+        } else {
+            let pts=getScaledPoints();
+            ctx.moveTo(CENTER_X+pts[0][0]*baseScale, CENTER_Y+pts[0][1]*baseScale);
+            for (let i=1;i<pts.length;i++) ctx.lineTo(CENTER_X+pts[i][0]*baseScale, CENTER_Y+pts[i][1]*baseScale);
+            ctx.closePath();
+        }
+        ctx.clip();
+
+        // Grey bands — identical grey, look different due to stripe intersection
+        const bandW = W * 0.08;
+        const leftBandX  = W * 0.18;
+        const rightBandX = W * 0.74;
+        ctx.globalAlpha = 0.30;
+        ctx.fillStyle = '#808080';
+        ctx.fillRect(leftBandX,  0, bandW, H);
+        ctx.fillRect(rightBandX, 0, bandW, H);
+        ctx.globalAlpha = 1.0;
+
+        // 1px black lines oscillating across the sim boundary
+        const startY = (offset % stripeH) - stripeH;
+        for (let y = startY; y < H + stripeH; y += stripeH) {
+            ctx.fillStyle = 'rgba(0,0,0,0.88)';
+            ctx.fillRect(0, y, W, 1);
+        }
+        // Right band: white 1px lines instead → grey there seen through black gaps = darker
+        for (let y = startY; y < H + stripeH; y += stripeH) {
+            ctx.fillStyle = 'rgba(255,255,255,0.88)';
+            ctx.fillRect(rightBandX, y, bandW, 1);
+        }
+
+        ctx.restore();
+    }
+
+    function loop(){
+        const now=performance.now();
+        fpsRolling=(fpsRolling*0.9)+((1000/Math.max(1,now-lastFrameTime))*0.1);
+        lastFrameTime=now;
+        munkerOffset=Math.sin(now*0.0008)*MUNKER_STRIPE_H*3+now*0.01;
+        const perfEl=document.getElementById('v2-perf-indicator');
+        if(fpsRolling<30){CHUNK_SIZE=Math.max(50,CHUNK_SIZE-5);perfEl.textContent='Compute: Throttled';perfEl.style.color='#f87171';}
+        else if(fpsRolling>55){CHUNK_SIZE=Math.min(800,CHUNK_SIZE+2);perfEl.textContent='Compute: Unleashed';perfEl.style.color='#34d399';}
+
+        for(let c=0;c<CHUNK_SIZE;c++){
+            balls.forEach((b,i)=>b.update(shadowBalls[i]));
+            shadowBalls.forEach(b=>b.update(null));
+            applyExclusionPrinciple();
+            checkInversion();
+            ticks++;
+        }
+        draw();
+
+        const v2ChaosGate = simMode==='discovery' ? 20.0 : 8.0;
+        if(sharedDbConnected&&ticks>0&&ticks-lastMuseumTicks>=10000&&chaosRatio<v2ChaosGate){
+            lastMuseumTicks=ticks;
+            let hash=generateHash();
+            if(!sharedKnownHashes.has(hash)){
+                sharedKnownHashes.add(hash);
+                museumCount++;
+                document.getElementById('v2-stat-museum').textContent=museumCount;
+                lastDiscoveryFlash=performance.now();
+                const boundaryType=simMode==='discovery'?'trajectory':'platonic';
+                showToast(scanLevel>1?'🔬':'🏛️',scanLevel>1?`Deep Scan Lv${scanLevel} Discovery`:boundaryType==='trajectory'?'Trajectory Boundary Found':'New Structure Found',hash.substring(0,32)+'...');
+                const windingStats=balls.map(b=>b.winding.toFixed(2)).join(',');
+                const wl2=getDominantWavelength(balls);
+                saveSessionProgress(1, 0);
+                sharedSupabase.from('museum').upsert({
+                    hash,
+                    chaos_ratio:chaosRatio.toFixed(2),
+                    tick_detected:ticks,
+                    inversions,
+                    version:'v2',
+                    scan_level:scanLevel,
+                    exclusion_dist:getScanConfig().exclusionDist,
+                    trail_len:getScanConfig().trailLen,
+                    parent_hash:scanParentHash||null,
+                    boundary_type: boundaryType,
+                    winding_signature: windingStats,
+                    discovery_bounds: simMode==='discovery'?JSON.stringify(discoveryBounds):null,
+                    session_id: SESSION_ID,
+                    dominant_nm: wl2.nm,
+                    dominant_wavelength: wl2.label
+                }).catch(e=>console.error(e));
+                setTimeout(()=>triggerDeepScan(hash),200);
+            }
+        }
+        // Publish to genesis_brain — richer data from V2
+        gbWriteSim3({
+            balls: balls.slice(0, 49).map(b => ({
+                x: (CENTER_X + b.x * baseScale) / width,
+                y: (CENTER_Y + b.y * baseScale) / height,
+                vx: b.vx, vy: b.vy,
+                winding: b.winding,
+                color: b.color,
+                type: b.type,
+                groupId: b.groupId,
+                glow: b.glowIntensity
+            })),
+            chaos_ratio: chaosRatio,
+            inversions: inversions,
+            ticks: ticks,
+            geo: currentGeoName,
+            sim_mode: simMode,
+            scan_level: scanLevel,
+            wall_heat: wallHeat,
+            wall_heat_max: wallHeatMax,
+            version: 'v2'
+        });
+        v2Loop=requestAnimationFrame(loop);
+    }
+
+    // UI
+    const v2Title=document.getElementById('v2-engine-title');
+    const v2TabPlat=document.getElementById('v2-tab-platonic');
+    const v2TabDisc=document.getElementById('v2-tab-discovery');
+    const v2GeoCont=document.getElementById('v2-geo-selector-container');
+
+    v2TabPlat.onclick=()=>{
+        simMode='platonic';scanLevel=1;scanParentHash=null;
+        document.getElementById('v2-deep-badge').classList.remove('active');
+        document.getElementById('v2-stat-scan').textContent='1';
+        v2Title.textContent='Platonic Boundary Sim';
+        v2Title.style.background='linear-gradient(to right,#38bdf8,#6366f1)';
+        v2TabPlat.style.cssText='padding:8px 16px;border-radius:8px;color:#38bdf8;font-weight:700;border-bottom:2px solid #38bdf8;cursor:pointer;background:none;';
+        v2TabDisc.style.cssText='padding:8px 16px;border-radius:8px;color:#94a3b8;cursor:pointer;background:none;border:none;';
+        v2GeoCont.style.display='flex';initBalls();
+    };
+    function v2SendDiscoveryToMuseum() {
+        if(!sharedDbConnected){alert('Not connected to museum DB');return;}
+        const hash=generateHash();
+        const windingStats=balls.map(b=>b.winding.toFixed(2)).join(',');
+        sharedKnownHashes.add(hash);
+        sharedSupabase.from('museum').upsert({
+            hash, chaos_ratio:chaosRatio.toFixed(2),
+            tick_detected:ticks, inversions, version:'v2',
+            scan_level:scanLevel, exclusion_dist:getScanConfig().exclusionDist,
+            trail_len:getScanConfig().trailLen, parent_hash:scanParentHash||null,
+            boundary_type:'trajectory',
+            winding_signature:windingStats,
+            discovery_bounds:JSON.stringify(discoveryBounds)
+        }).then(()=>{
+            const btn=document.getElementById('v2-museum-btn');
+            if(btn){btn.textContent='✓ Saved!';btn.style.color='#34d399';setTimeout(()=>{btn.textContent='🏛 Send to Museum';btn.style.color='#c084fc';},2000);}
+        }).catch(e=>{alert('Save failed: '+e.message);});
+    }
+
+    v2TabDisc.onclick=()=>{
+        simMode='discovery';scanLevel=1;scanParentHash=null;
+        document.getElementById('v2-deep-badge').classList.remove('active');
+        document.getElementById('v2-stat-scan').textContent='1';
+        v2Title.textContent='Boundary Discovery Engine';
+        v2Title.style.background='linear-gradient(to right,#c084fc,#ec4899)';
+        v2TabDisc.style.cssText='padding:8px 16px;border-radius:8px;color:#c084fc;font-weight:700;border-bottom:2px solid #c084fc;cursor:pointer;background:none;';
+        v2TabPlat.style.cssText='padding:8px 16px;border-radius:8px;color:#94a3b8;cursor:pointer;background:none;border:none;';
+        v2GeoCont.style.display='none';
+        let existBtn=document.getElementById('v2-museum-btn');
+        if(!existBtn){
+            const btn=document.createElement('button');
+            btn.id='v2-museum-btn';
+            btn.textContent='🏛 Send to Museum';
+            btn.style.cssText='padding:6px 14px;border-radius:8px;border:1px solid rgba(192,132,252,0.4);background:rgba(192,132,252,0.1);color:#c084fc;font-size:10px;font-family:monospace;cursor:pointer;letter-spacing:0.08em;margin-left:8px;';
+            btn.onclick=v2SendDiscoveryToMuseum;
+            v2TabDisc.parentElement.appendChild(btn);
+        } else { existBtn.style.display='inline-block'; }
+        initBalls();
+    };
+    document.getElementById('v2-geo-select').onchange=(e)=>{
+        currentGeoName=e.target.value;activeGeo=geometries[currentGeoName];
+        scanLevel=1;scanParentHash=null;
+        document.getElementById('v2-deep-badge').classList.remove('active');
+        initBalls();
+    };
+    window.addEventListener('resize',()=>{if(activeVersion==='v2') resizeCanvas();});
+
+    resizeCanvas();
+    initBalls();
+    loop();
+}
+</script>
+
+<!-- ═══════════════════════════════════════════════
+     V3 ENGINE — PLAYBACK + GENESIS BRAIN SYNC
+     V1 and V2 above are completely untouched.
+     V3 is purely additive.
+═══════════════════════════════════════════════ -->
+<script>
+function initV3() {
+    const colors = ['#ef4444','#f97316','#eab308','#22c55e','#3b82f6','#4f46e5','#a855f7'];
+    const ST_H = 5;
+    const ZETA_VOID_LIMIT = 2000;
+    const PRESIM_TICKS = 1000;
+
+    const canvas = document.getElementById('v3-canvas');
+    const ctx = canvas.getContext('2d');
+    let width, height, CENTER_X, CENTER_Y, baseScale = 1;
+    let bgPattern, fgPatterns = [];
+
+    function initPatterns() {
+        let bgCanv = document.createElement('canvas');
+        bgCanv.width = 1; bgCanv.height = ST_H * 7;
+        let bCtx = bgCanv.getContext('2d');
+        colors.forEach((c,i) => { bCtx.fillStyle=c; bCtx.fillRect(0,i*ST_H,1,ST_H); });
+        bgPattern = ctx.createPattern(bgCanv,'repeat');
+        fgPatterns = colors.map((c,i) => {
+            let fc=document.createElement('canvas'); fc.width=1; fc.height=ST_H*7;
+            let fCtx=fc.getContext('2d'); fCtx.fillStyle=c; fCtx.fillRect(0,i*ST_H,1,ST_H);
+            return ctx.createPattern(fc,'repeat');
+        });
+    }
+
+    function resizeCanvas() {
+        width=window.innerWidth; height=window.innerHeight;
+        canvas.width=width; canvas.height=height;
+        CENTER_X=width/2; CENTER_Y=height/2;
+        baseScale=Math.min(width,height)/800;
+        initPatterns();
+    }
+
+    let simMode='platonic', currentGeoName='Square';
+    let ticks=0, inversions=0, chaosRatio=0.0, museumCount=0;
+    let lastMuseumTicks=0;
+    let frameBuffer=[], playbackIdx=0, playbackMode=true;
+    let lastFrameTime=performance.now(), fpsRolling=60;
+    let discoveryBounds={minX:-150,maxX:150,minY:-150,maxY:150};
+    const MUNKER_STRIPE_H=38; let munkerOffset=0;
+    let lastInversionTime=0, lastInversionData=null;
+
+    const geometries={
+        'Square':  {type:'poly',basePoints:[[-150,-150],[150,-150],[150,150],[-150,150]],scale:1},
+        'Triangle':{type:'poly',basePoints:[[0,-180],[156,90],[-156,90]],scale:1},
+        'Hexagon': {type:'poly',basePoints:[],scale:1},
+        'Octagon': {type:'poly',basePoints:[],scale:1},
+        'Circle':  {type:'circle',baseRadius:150,scale:1}
+    };
+    for(let i=0;i<6;i++) geometries['Hexagon'].basePoints.push([Math.cos(i*Math.PI/3-Math.PI/6)*165,Math.sin(i*Math.PI/3-Math.PI/6)*165]);
+    for(let i=0;i<8;i++) geometries['Octagon'].basePoints.push([Math.cos(i*Math.PI/4-Math.PI/8)*160,Math.sin(i*Math.PI/4-Math.PI/8)*160]);
+    let activeGeo=geometries['Square'];
+
+    function getScaledPoints() {
+        if(activeGeo.type!=='poly') return [];
+        return activeGeo.basePoints.map(p=>[p[0]*activeGeo.scale,p[1]*activeGeo.scale]);
+    }
+
+    class Ball {
+        constructor(groupId,isShadow=false) {
+            this.groupId=groupId; this.color=colors[groupId]; this.isShadow=isShadow;
+            this.type=Math.random()>0.5?'smith':'blade'; this.reset();
+        }
+        reset() {
+            this.x=(Math.random()*80-40); this.y=(Math.random()*80-40);
+            let speed=this.type==='blade'?2.5:1.2, angle=Math.random()*Math.PI*2;
+            this.vx=Math.cos(angle)*speed; this.vy=Math.sin(angle)*speed;
+            this.winding=0; this.ticksSinceHit=0; this.path=[]; this.lastAngle=undefined;
+        }
+        update(shadowBall) {
+            this.x+=this.vx; this.y+=this.vy; this.ticksSinceHit++;
+            if(!this.isShadow && shadowBall){
+                let dx=this.x-shadowBall.x, dy=this.y-shadowBall.y;
+                chaosRatio=(chaosRatio*0.999)+(Math.sqrt(dx*dx+dy*dy)*0.001);
+            }
+            if(!this.isShadow && ticks%5===0){
+                this.path.push({x:this.x,y:this.y});
+                if(this.path.length>50) this.path.shift();
+            }
+            let angle=Math.atan2(this.y,this.x);
+            if(this.lastAngle!==undefined){
+                let da=angle-this.lastAngle;
+                if(da>Math.PI) da-=2*Math.PI;
+                if(da<-Math.PI) da+=2*Math.PI;
+                this.winding+=da/(2*Math.PI);
+            }
+            this.lastAngle=angle;
+            this.checkBoundaries();
+            if(this.ticksSinceHit>ZETA_VOID_LIMIT){this.x*=0.1;this.y*=0.1;this.vx*=-1;this.vy*=-1;this.ticksSinceHit=0;}
+        }
+        checkBoundaries() {
+            let hit=false;
+            if(simMode==='discovery'){
+                if(this.x<discoveryBounds.minX||this.x>discoveryBounds.maxX){
+                    if(this.type==='blade'){discoveryBounds.minX-=0.05;discoveryBounds.maxX+=0.05;}
+                    this.vx*=-1; this.x=this.x<discoveryBounds.minX?discoveryBounds.minX:discoveryBounds.maxX; hit=true;
+                }
+                if(this.y<discoveryBounds.minY||this.y>discoveryBounds.maxY){
+                    if(this.type==='blade'){discoveryBounds.minY-=0.05;discoveryBounds.maxY+=0.05;}
+                    this.vy*=-1; this.y=this.y<discoveryBounds.minY?discoveryBounds.minY:discoveryBounds.maxY; hit=true;
+                }
+            } else {
+                if(activeGeo.type==='circle'){
+                    let r=activeGeo.baseRadius*activeGeo.scale;
+                    if(this.x*this.x+this.y*this.y>r*r){
+                        if(this.type==='blade') activeGeo.scale+=0.0002;
+                        let dist=Math.sqrt(this.x*this.x+this.y*this.y);
+                        let nx=this.x/dist, ny=this.y/dist, dot=this.vx*nx+this.vy*ny;
+                        if(dot>0){this.vx-=2*dot*nx;this.vy-=2*dot*ny;this.x=nx*r;this.y=ny*r;hit=true;}
+                    }
+                } else {
+                    let pts=getScaledPoints();
+                    for(let i=0;i<pts.length;i++){
+                        let p1=pts[i],p2=pts[(i+1)%pts.length];
+                        let nx=-(p2[1]-p1[1]),ny=p2[0]-p1[0],len=Math.sqrt(nx*nx+ny*ny);
+                        nx/=len; ny/=len;
+                        if(nx*(-p1[0])+ny*(-p1[1])<0){nx=-nx;ny=-ny;}
+                        let d=(this.x-p1[0])*nx+(this.y-p1[1])*ny;
+                        if(d<0){
+                            if(this.type==='blade') activeGeo.scale+=0.0002;
+                            let dot=this.vx*(-nx)+this.vy*(-ny);
+                            if(dot>0){this.vx-=2*dot*(-nx);this.vy-=2*dot*(-ny);this.x-=d*nx;this.y-=d*ny;hit=true;}
+                        }
+                    }
+                }
+            }
+            if(hit) this.ticksSinceHit=0;
+        }
+    }
+
+    let balls=[], shadowBalls=[];
+
+    function _spawnBalls() {
+        balls=[]; shadowBalls=[];
+        for(let g=0;g<colors.length;g++){
+            for(let b=0;b<7;b++) balls.push(new Ball(g));
+            for(let b=0;b<7;b++) shadowBalls.push(new Ball(g,true));
+        }
+        ticks=0; inversions=0; chaosRatio=0; lastMuseumTicks=0;
+        discoveryBounds={minX:-150,maxX:150,minY:-150,maxY:150};
+        if(simMode==='platonic') activeGeo.scale=1;
+    }
+
+    function generateHash() {
+        // Trajectory + winding signature for V3
+        let windSig=balls.map(b=>{
+            const wb=Math.round(b.winding*2)/2;
+            return `${b.type}_W${wb}_V${b.vx.toFixed(1)}_${b.vy.toFixed(1)}`;
+        }).join('|');
+        let grid=new Array(16).fill(0);
+        balls.forEach(b=>{
+            if(!b.path||b.path.length<2)return;
+            const stride=Math.max(1,Math.floor(b.path.length/20));
+            for(let i=0;i<b.path.length;i+=stride){
+                const cx=Math.min(3,Math.max(0,Math.floor((b.path[i].x+200)/100)));
+                const cy=Math.min(3,Math.max(0,Math.floor((b.path[i].y+200)/100)));
+                grid[cy*4+cx]++;
+            }
+        });
+        const gridSig=grid.map(v=>Math.min(9,Math.floor(v/3))).join('');
+        let hash=0; const full=windSig+gridSig;
+        for(let i=0;i<full.length;i++){hash=(hash<<5)-hash+full.charCodeAt(i);hash|=0;}
+        const hash16=Math.abs(hash).toString(16).padStart(8,'0');
+        return simMode==='discovery'?`Disc_W${Math.round(discoveryBounds.maxX-discoveryBounds.minX)}_v3_${hash16}`:`${currentGeoName}_v3_${hash16}`;
+    }
+
+    function initBalls() {
+        let attempts=0;
+        do { _spawnBalls(); attempts++; }
+        while(sharedKnownHashes.has(generateHash()) && attempts<50);
+        preSim();
+    }
+
+    // ── Snapshot / playback system ──
+    function snapshotState() {
+        return {
+            balls:balls.map(b=>({x:b.x,y:b.y,vx:b.vx,vy:b.vy,winding:b.winding,ticksSinceHit:b.ticksSinceHit,lastAngle:b.lastAngle,type:b.type,groupId:b.groupId,color:b.color,path:b.path.map(p=>({x:p.x,y:p.y}))})),
+            shadowBalls:shadowBalls.map(b=>({x:b.x,y:b.y,vx:b.vx,vy:b.vy,winding:b.winding,ticksSinceHit:b.ticksSinceHit,lastAngle:b.lastAngle})),
+            chaosRatio,inversions,ticks,discoveryBounds:{...discoveryBounds},geoScale:activeGeo.scale
+        };
+    }
+    function restoreSnapshot(snap) {
+        snap.balls.forEach((s,i)=>{ const b=balls[i]; if(!b) return; Object.assign(b,{...s,path:s.path.map(p=>({x:p.x,y:p.y}))}); });
+        snap.shadowBalls.forEach((s,i)=>{ const b=shadowBalls[i]; if(!b) return; Object.assign(b,s); });
+        chaosRatio=snap.chaosRatio; inversions=snap.inversions; ticks=snap.ticks;
+        discoveryBounds={...snap.discoveryBounds}; activeGeo.scale=snap.geoScale;
+    }
+    function preSim() {
+        frameBuffer=[]; playbackIdx=0; playbackMode=true;
+        for(let t=0;t<PRESIM_TICKS;t++){
+            balls.forEach((b,i)=>b.update(shadowBalls[i]));
+            shadowBalls.forEach(b=>b.update(null));
+            applyExclusionPrinciple();
+            checkInversion();
+            ticks++;
+            frameBuffer.push(snapshotState());
+        }
+    }
+
+    function applyExclusionPrinciple() {
+        const excDist=25;
+        for(let i=0;i<balls.length;i++){
+            for(let j=i+1;j<balls.length;j++){
+                let dx=balls[i].x-balls[j].x, dy=balls[i].y-balls[j].y;
+                if(dx*dx+dy*dy < excDist*excDist){
+                    let b1=balls[i],b2=balls[j];
+                    if(Math.abs(b1.winding)<0.1){b1.vx=(Math.random()-0.5)*15;b1.vy=(Math.random()-0.5)*15;}
+                    if(Math.abs(b1.winding)>Math.abs(b2.winding)){b2.vx*=-1.08;b2.vy*=-1.08;}
+                    else{b1.vx*=-1.08;b1.vy*=-1.08;}
+                }
+            }
+        }
+    }
+
+    function checkInversion() {
+        let triggered=false;
+        if(simMode==='platonic'&&activeGeo.scale>4.5){
+            inversions++; activeGeo.scale=0.5; triggered=true;
+            balls.forEach(b=>{b.x*=0.1;b.y*=0.1;b.vx*=-1;b.vy*=-1;});
+        } else if(simMode==='discovery'&&(discoveryBounds.maxX-discoveryBounds.minX>760)){
+            inversions++; triggered=true;
+            discoveryBounds={minX:-50,maxX:50,minY:-50,maxY:50};
+            balls.forEach(b=>{b.x*=0.1;b.y*=0.1;b.vx*=-1;b.vy*=-1;});
+        }
+        document.getElementById('v3-stat-inv').textContent=inversions;
+        if(triggered){
+            lastInversionTime=performance.now();
+            const wl=getDominantWavelength(balls);
+            lastInversionData={
+                inversions,chaos:chaosRatio.toFixed(3),ticks,
+                nm:wl.nm,wavelabel:wl.label,wavehex:wl.hex,
+                geo:currentGeoName,mode:simMode,
+                topWindings:balls.slice(0,5).map(b=>b.winding.toFixed(2)).join(' │ ')
+            };
+        }
+    }
+
+    function drawInversionOverlay(now) {
+        const elapsed=now-lastInversionTime;
+        const HOLD=2200,FADE=800,total=HOLD+FADE;
+        if(!lastInversionData||elapsed>total) return;
+        const alpha=elapsed<HOLD?1.0:1.0-(elapsed-HOLD)/FADE;
+        const d=lastInversionData;
+        ctx.save(); ctx.globalAlpha=alpha;
+        ctx.fillStyle='rgba(2,6,23,0.88)'; ctx.fillRect(0,0,width,height);
+        const cw=Math.min(560,width*0.85),ch=270,cx=(width-cw)/2,cy=(height-ch)/2;
+        ctx.fillStyle='rgba(15,23,42,0.96)';
+        ctx.beginPath();
+        ctx.roundRect?ctx.roundRect(cx,cy,cw,ch,16):ctx.rect(cx,cy,cw,ch);
+        ctx.fill();
+        ctx.fillStyle=d.wavehex; ctx.fillRect(cx,cy,cw,3);
+        ctx.font='bold 11px monospace'; ctx.fillStyle='#475569'; ctx.textAlign='center';
+        ctx.fillText('INVERSION EVENT  ·  V3 PLAYBACK ENGINE', width/2, cy+24);
+        ctx.font='bold 72px monospace'; ctx.fillStyle='#e2e8f0';
+        ctx.fillText('#'+d.inversions, width/2, cy+100);
+        ctx.font='11px monospace'; ctx.fillStyle='#64748b';
+        ctx.fillText('CHAOS  '+d.chaos+'   ·   TICKS  '+d.ticks.toLocaleString()+'   ·   '+d.mode.toUpperCase(), width/2, cy+128);
+        ctx.font='bold 13px monospace'; ctx.fillStyle=d.wavehex;
+        ctx.fillText('λ  '+d.nm+'nm  —  '+d.wavelabel, width/2, cy+158);
+        ctx.font='10px monospace'; ctx.fillStyle='#334155';
+        ctx.fillText('WINDING  '+d.topWindings, width/2, cy+184);
+        ctx.font='9px monospace'; ctx.fillStyle='#1e293b';
+        ctx.fillText('Boundary collapsed → re-expanding  ·  geometry: '+d.geo, width/2, cy+212);
+        // Mini winding bar graph
+        const barW=cw*0.6, barX=cx+(cw-barW)/2, barY=cy+228;
+        balls.slice(0,7).forEach((b,i)=>{
+            const wn=Math.min(1,Math.abs(b.winding)/5);
+            const bw=(barW/7)-4;
+            ctx.fillStyle=b.color+'88';
+            ctx.fillRect(barX+i*(bw+4), barY+12-wn*12, bw, wn*12);
+        });
+        ctx.font='8px monospace'; ctx.fillStyle='#334155';
+        ctx.fillText('WINDING DISTRIBUTION', width/2, barY+8);
+        const ringR=24+Math.sin(now*0.008)*6;
+        ctx.beginPath(); ctx.arc(width/2,cy-30,ringR,0,Math.PI*2);
+        ctx.strokeStyle=d.wavehex+'66'; ctx.lineWidth=1.5; ctx.stroke();
+        ctx.beginPath(); ctx.arc(width/2,cy-30,ringR*0.55,0,Math.PI*2);
+        ctx.fillStyle=d.wavehex+'33'; ctx.fill();
+        ctx.restore();
+    }
+
+    function drawMunkerWhite(W,H,offset,stripeH) {
+        ctx.save();
+        ctx.beginPath();
+        if(simMode==='discovery'){ctx.rect(CENTER_X+discoveryBounds.minX*baseScale,CENTER_Y+discoveryBounds.minY*baseScale,(discoveryBounds.maxX-discoveryBounds.minX)*baseScale,(discoveryBounds.maxY-discoveryBounds.minY)*baseScale);}
+        else if(activeGeo.type==='circle'){ctx.arc(CENTER_X,CENTER_Y,activeGeo.baseRadius*activeGeo.scale*baseScale,0,Math.PI*2);}
+        else{let pts=getScaledPoints();ctx.moveTo(CENTER_X+pts[0][0]*baseScale,CENTER_Y+pts[0][1]*baseScale);for(let i=1;i<pts.length;i++) ctx.lineTo(CENTER_X+pts[i][0]*baseScale,CENTER_Y+pts[i][1]*baseScale);ctx.closePath();}
+        ctx.clip();
+        const bandW=W*0.08, leftBandX=W*0.18, rightBandX=W*0.74;
+        ctx.globalAlpha=0.30; ctx.fillStyle='#808080';
+        ctx.fillRect(leftBandX,0,bandW,H); ctx.fillRect(rightBandX,0,bandW,H);
+        ctx.globalAlpha=1.0;
+        const startY=(offset%stripeH)-stripeH;
+        for(let y=startY;y<H+stripeH;y+=stripeH){ctx.fillStyle='rgba(0,0,0,0.88)';ctx.fillRect(0,y,W,1);}
+        for(let y=startY;y<H+stripeH;y+=stripeH){ctx.fillStyle='rgba(255,255,255,0.88)';ctx.fillRect(rightBandX,y,bandW,1);}
+        ctx.restore();
+    }
+
+    function draw() {
+        ctx.clearRect(0,0,width,height);
+        ctx.fillStyle=bgPattern; ctx.fillRect(0,0,width,height);
+        ctx.fillStyle='rgba(2,6,23,0.7)';
+        ctx.beginPath(); ctx.rect(0,0,width,height);
+        if(simMode==='discovery'){ctx.rect(CENTER_X+discoveryBounds.minX*baseScale,CENTER_Y+discoveryBounds.minY*baseScale,(discoveryBounds.maxX-discoveryBounds.minX)*baseScale,(discoveryBounds.maxY-discoveryBounds.minY)*baseScale);}
+        else if(activeGeo.type==='circle'){ctx.arc(CENTER_X,CENTER_Y,activeGeo.baseRadius*activeGeo.scale*baseScale,0,Math.PI*2,true);}
+        else{let pts=getScaledPoints();ctx.moveTo(CENTER_X+pts[0][0]*baseScale,CENTER_Y+pts[0][1]*baseScale);for(let i=pts.length-1;i>=0;i--) ctx.lineTo(CENTER_X+pts[i][0]*baseScale,CENTER_Y+pts[i][1]*baseScale);}
+        ctx.fill('evenodd');
+        drawMunkerWhite(width,height,munkerOffset,MUNKER_STRIPE_H);
+
+        ctx.lineWidth=1.5; ctx.globalCompositeOperation='hard-light';
+        let maxDist=(simMode==='discovery'?150:150*activeGeo.scale)*baseScale;
+        for(let i=0;i<balls.length;i++){
+            for(let j=i+1;j<balls.length;j++){
+                let dx=balls[i].x*baseScale-balls[j].x*baseScale, dy=balls[i].y*baseScale-balls[j].y*baseScale;
+                if(Math.abs(dx)>maxDist||Math.abs(dy)>maxDist) continue;
+                let dist=Math.sqrt(dx*dx+dy*dy);
+                if(dist<maxDist){
+                    ctx.beginPath();
+                    ctx.moveTo(CENTER_X+balls[i].x*baseScale,CENTER_Y+balls[i].y*baseScale);
+                    let warpX=(balls[i].vx+balls[j].vx)*10*baseScale, warpY=(balls[i].vy+balls[j].vy)*10*baseScale;
+                    ctx.bezierCurveTo(CENTER_X+balls[i].x*baseScale+warpX,CENTER_Y+balls[i].y*baseScale-warpY,CENTER_X+balls[j].x*baseScale-warpX,CENTER_Y+balls[j].y*baseScale+warpY,CENTER_X+balls[j].x*baseScale,CENTER_Y+balls[j].y*baseScale);
+                    let opacity=(1-dist/maxDist)*0.8;
+                    let grad=ctx.createLinearGradient(CENTER_X+balls[i].x*baseScale,CENTER_Y+balls[i].y*baseScale,CENTER_X+balls[j].x*baseScale,CENTER_Y+balls[j].y*baseScale);
+                    grad.addColorStop(0,balls[i].color+Math.floor(opacity*255).toString(16).padStart(2,'0'));
+                    grad.addColorStop(1,balls[j].color+Math.floor(opacity*255).toString(16).padStart(2,'0'));
+                    ctx.strokeStyle=grad; ctx.stroke();
+                }
+            }
+        }
+        ctx.globalCompositeOperation='source-over';
+
+        // Trail + balls
+        const groups=[...new Set(balls.map(b=>b.groupId))];
+        groups.forEach(g=>{
+            const groupBalls=balls.filter(b=>b.groupId===g);
+            groupBalls.forEach(b=>{
+                if(b.path.length>1){
+                    let windingBoost=Math.min(1,Math.abs(b.winding)/5);
+                    ctx.beginPath(); ctx.moveTo(CENTER_X+b.path[0].x*baseScale,CENTER_Y+b.path[0].y*baseScale);
+                    for(let p=1;p<b.path.length;p++) ctx.lineTo(CENTER_X+b.path[p].x*baseScale,CENTER_Y+b.path[p].y*baseScale);
+                    ctx.strokeStyle=b.color+(Math.floor((0.35+windingBoost*0.45)*255)).toString(16).padStart(2,'0');
+                    ctx.lineWidth=b.type==='smith'?3+windingBoost*2:1.5+windingBoost; ctx.stroke();
+                }
+            });
+            groupBalls.forEach(b=>{
+                let windingBoost=Math.min(1,Math.abs(b.winding)/5);
+                let r=(b.type==='smith'?8:5)*baseScale*(1+windingBoost*0.4);
+                ctx.beginPath(); ctx.arc(CENTER_X+b.x*baseScale,CENTER_Y+b.y*baseScale,r,0,Math.PI*2);
+                ctx.shadowBlur=Math.max(windingBoost*0.6)*30; ctx.shadowColor=b.color;
+                ctx.fillStyle='#94a3b8'; ctx.fill();
+                if(fgPatterns[g]){ctx.fillStyle=fgPatterns[g];ctx.fill();}
+                ctx.shadowBlur=0;
+            });
+        });
+
+        // Boundary stroke
+        ctx.strokeStyle='#334155'; ctx.lineWidth=3;
+        if(simMode==='discovery'){ctx.strokeRect(CENTER_X+discoveryBounds.minX*baseScale,CENTER_Y+discoveryBounds.minY*baseScale,(discoveryBounds.maxX-discoveryBounds.minX)*baseScale,(discoveryBounds.maxY-discoveryBounds.minY)*baseScale);}
+        else if(activeGeo.type==='circle'){ctx.beginPath();ctx.arc(CENTER_X,CENTER_Y,activeGeo.baseRadius*activeGeo.scale*baseScale,0,Math.PI*2);ctx.stroke();}
+        else{let pts=getScaledPoints();ctx.beginPath();ctx.moveTo(CENTER_X+pts[0][0]*baseScale,CENTER_Y+pts[0][1]*baseScale);for(let i=1;i<pts.length;i++) ctx.lineTo(CENTER_X+pts[i][0]*baseScale,CENTER_Y+pts[i][1]*baseScale);ctx.closePath();ctx.stroke();}
+
+        // HUD stats
+        document.getElementById('v3-stat-chaos').textContent=chaosRatio.toFixed(2);
+        document.getElementById('v3-stat-ticks').textContent=ticks;
+        const wlLive=getDominantWavelength(balls);
+        const nmEl=document.getElementById('v3-stat-nm');
+        if(nmEl){nmEl.textContent=wlLive.nm+'nm '+wlLive.label;nmEl.style.color=wlLive.hex;}
+
+        // ── Inversion overlay — always on top ──
+        drawInversionOverlay(performance.now());
+    }
+
+    function loop() {
+        const now=performance.now();
+        fpsRolling=(fpsRolling*0.9)+((1000/Math.max(1,now-lastFrameTime))*0.1);
+        lastFrameTime=now;
+        munkerOffset=Math.sin(now*0.0008)*MUNKER_STRIPE_H*3+now*0.01;
+        const perfEl=document.getElementById('v3-perf-indicator');
+
+        if(playbackMode){
+            restoreSnapshot(frameBuffer[playbackIdx]);
+            playbackIdx++;
+            if(playbackIdx>=frameBuffer.length){
+                playbackMode=false; frameBuffer=[];
+                perfEl.textContent='Live · '+fpsRolling.toFixed(0)+'fps'; perfEl.style.color='#14b8a6';
+            } else {
+                perfEl.textContent='Playback '+Math.round(playbackIdx/frameBuffer.length*100)+'%'; perfEl.style.color='#38bdf8';
+            }
+        } else {
+            // 1 tick per frame — inversion bursts fully visible
+            balls.forEach((b,i)=>b.update(shadowBalls[i]));
+            shadowBalls.forEach(b=>b.update(null));
+            applyExclusionPrinciple();
+            checkInversion();
+            ticks++;
+        }
+
+        draw();
+
+        // Museum logging
+        const v3ChaosGate = simMode==='discovery' ? 20.0 : 8.0;
+        if(sharedDbConnected&&ticks>0&&ticks-lastMuseumTicks>=10000&&chaosRatio<v3ChaosGate){
+            lastMuseumTicks=ticks;
+            let hash=generateHash();
+            if(!sharedKnownHashes.has(hash)){
+                sharedKnownHashes.add(hash); museumCount++;
+                document.getElementById('v3-stat-museum').textContent=museumCount;
+                const windingStats=balls.map(b=>b.winding.toFixed(2)).join(',');
+                const boundaryType=simMode==='discovery'?'trajectory':'platonic';
+                const wl3=getDominantWavelength(balls);
+                saveSessionProgress(1, 0);
+                sharedSupabase.from('museum').upsert({
+                    hash, chaos_ratio:chaosRatio.toFixed(2),
+                    tick_detected:ticks, inversions, version:'v3',
+                    boundary_type: boundaryType,
+                    winding_signature: windingStats,
+                    discovery_bounds: simMode==='discovery'?JSON.stringify(discoveryBounds):null,
+                    session_id: SESSION_ID,
+                    dominant_nm: wl3.nm,
+                    dominant_wavelength: wl3.label
+                }).catch(e=>console.error(e));
+            }
+        }
+
+        // GenesisBrain sync
+        gbWriteSim3({
+            balls:balls.slice(0,49).map(b=>({
+                x:(CENTER_X+b.x*baseScale)/width, y:(CENTER_Y+b.y*baseScale)/height,
+                vx:b.vx, vy:b.vy, winding:b.winding, color:b.color, type:b.type, groupId:b.groupId, glow:0
+            })),
+            chaos_ratio:chaosRatio, inversions, ticks, geo:currentGeoName, sim_mode:simMode, version:'v3',
+            dominant_nm: getDominantWavelength(balls).nm,
+            dominant_wavelength: getDominantWavelength(balls).label,
+            session_id: SESSION_ID
+        });
+
+        v3Loop=requestAnimationFrame(loop);
+    }
+
+    // UI
+    document.getElementById('v3-tab-platonic').onclick=()=>{
+        simMode='platonic'; currentGeoName='Square'; activeGeo=geometries['Square'];
+        document.getElementById('v3-tab-platonic').style.cssText+='color:#14b8a6;font-weight:700;border-bottom:2px solid #14b8a6;';
+        document.getElementById('v3-tab-discovery').style.cssText+='color:#94a3b8;border-bottom:none;';
+        initBalls();
+    };
+    function v3SendDiscoveryToMuseum() {
+        if(!sharedDbConnected){alert('Not connected to museum DB');return;}
+        const hash=generateHash();
+        const windingStats=balls.map(b=>b.winding.toFixed(2)).join(',');
+        sharedKnownHashes.add(hash);
+        const wlM=getDominantWavelength(balls);
+        saveSessionProgress(1, 0);
+        sharedSupabase.from('museum').upsert({
+            hash, chaos_ratio:chaosRatio.toFixed(2),
+            tick_detected:ticks, inversions, version:'v3',
+            boundary_type:'trajectory',
+            winding_signature:windingStats,
+            discovery_bounds:JSON.stringify(discoveryBounds),
+            session_id: SESSION_ID,
+            dominant_nm: wlM.nm,
+            dominant_wavelength: wlM.label
+        }).then(()=>{
+            const btn=document.getElementById('v3-museum-btn');
+            if(btn){btn.textContent='✓ Saved!';btn.style.color='#34d399';setTimeout(()=>{btn.textContent='🏛 Send to Museum';btn.style.color='#14b8a6';},2000);}
+        }).catch(e=>{alert('Save failed: '+e.message);});
+    }
+
+    document.getElementById('v3-tab-discovery').onclick=()=>{
+        simMode='discovery'; currentGeoName='Disc';
+        document.getElementById('v3-tab-discovery').style.cssText+='color:#14b8a6;font-weight:700;border-bottom:2px solid #14b8a6;';
+        document.getElementById('v3-tab-platonic').style.cssText+='color:#94a3b8;border-bottom:none;';
+        // Show museum send button
+        const discBtn=document.getElementById('v3-tab-discovery');
+        let existBtn=document.getElementById('v3-museum-btn');
+        if(!existBtn){
+            const btn=document.createElement('button');
+            btn.id='v3-museum-btn';
+            btn.textContent='🏛 Send to Museum';
+            btn.style.cssText='padding:6px 14px;border-radius:8px;border:1px solid rgba(20,184,166,0.4);background:rgba(20,184,166,0.1);color:#14b8a6;font-size:10px;font-family:monospace;cursor:pointer;letter-spacing:0.08em;margin-left:8px;';
+            btn.onclick=v3SendDiscoveryToMuseum;
+            discBtn.parentElement.appendChild(btn);
+        } else { existBtn.style.display='inline-block'; }
+        initBalls();
+    };
+    window.addEventListener('resize',()=>{ if(activeVersion==='v3') resizeCanvas(); });
+
+    resizeCanvas();
+    initBalls();
+    loop();
+}
+</script>
+
 </body>
 </html>
